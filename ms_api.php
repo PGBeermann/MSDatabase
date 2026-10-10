@@ -32,11 +32,17 @@ const MASSBANK_WEB   = 'https://massbank.eu/MassBank/RecordDisplay?id=';
 const PUBCHEM_API    = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
 const EI_TYPES       = 'EI-B,EI-EBEB,EI-TOF,EI-QTOF,GC-EI-B,GC-EI-BE,GC-EI-FT,GC-EI-Q,GC-EI-QQ,GC-EI-QTOF,GC-EI-TOF';
 const MAX_ESPECTROS  = 5;            // tope de registros devueltos por consulta
-const CACHE_DIR      = __DIR__ . '/cache';
 const CACHE_TTL      = 2592000;      // 30 días
 const LIMITE_MIN     = 20;           // consultas por minuto y por IP
 const HTTP_TIMEOUT   = 20;           // segundos
-const CORS_ORIGIN    = '';           // p. ej. 'https://midominio.com'; vacío = mismo origen
+
+// Ajustables por variables de entorno (Dokploy → Environment):
+//   MS_CACHE_DIR    Carpeta de caché FUERA de la raíz web (en Docker: /var/www/cache).
+//   MS_TRUST_PROXY  1 = la app está detrás de Traefik/Nginx; usa X-Forwarded-For para la IP real.
+//   MS_CORS_ORIGIN  p. ej. https://midominio.com ; vacío = solo mismo origen.
+define('CACHE_DIR',   rtrim(getenv('MS_CACHE_DIR') ?: __DIR__ . '/cache', '/'));
+define('TRUST_PROXY', getenv('MS_TRUST_PROXY') === '1');
+define('CORS_ORIGIN', (string) (getenv('MS_CORS_ORIGIN') ?: ''));
 
 // Permite redirigir las API en pruebas (variables de entorno opcionales).
 $MB_API = getenv('MS_MASSBANK_API') ?: MASSBANK_API;
@@ -67,16 +73,42 @@ function asegurarCache(): void
     if (!is_dir(CACHE_DIR) && !@mkdir(CACHE_DIR, 0750, true)) {
         responder(500, ['error' => 'No se pudo crear el directorio de caché.']);
     }
+    if (!is_writable(CACHE_DIR)) {
+        responder(500, ['error' => 'El directorio de caché no tiene permiso de escritura.']);
+    }
     $ht = CACHE_DIR . '/.htaccess';
     if (!is_file($ht)) {
         @file_put_contents($ht, "Require all denied\n");
     }
+    // Limpieza ocasional (≈1 % de las peticiones) de archivos vencidos.
+    if (mt_rand(1, 100) === 1) {
+        $archivos = array_merge(glob(CACHE_DIR . '/h_*.json') ?: [], glob(CACHE_DIR . '/rl_*.json') ?: []);
+        foreach ($archivos as $f) {
+            $limite = strpos(basename($f), 'rl_') === 0 ? 120 : CACHE_TTL;
+            if (filemtime($f) < time() - $limite) {
+                @unlink($f);
+            }
+        }
+    }
+}
+
+/** IP del cliente; detrás de un proxy inverso confiable usa X-Forwarded-For. */
+function ipCliente(): string
+{
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'cli';
+    if (TRUST_PROXY && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $primera = trim(explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR'])[0]);
+        if (filter_var($primera, FILTER_VALIDATE_IP)) {
+            $ip = $primera;
+        }
+    }
+    return $ip;
 }
 
 /** Límite simple de frecuencia por IP (ventana de 60 s). */
 function limitarFrecuencia(): void
 {
-    $ip   = $_SERVER['REMOTE_ADDR'] ?? 'cli';
+    $ip   = ipCliente();
     $file = CACHE_DIR . '/rl_' . sha1($ip) . '.json';
     $now  = time();
     $fh   = @fopen($file, 'c+');
