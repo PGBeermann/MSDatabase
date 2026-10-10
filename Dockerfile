@@ -1,10 +1,10 @@
 # MSDatabase — PHP 8.3 + Apache, listo para Dokploy
-# La imagen oficial ya incluye las extensiones curl, mbstring, json y filter.
+# La imagen oficial ya incluye las extensiones curl, mbstring, dom, json y filter.
 FROM php:8.3-apache
 
 # Configuración PHP de producción
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
- && { echo 'expose_php = Off'; echo 'max_execution_time = 60'; echo 'date.timezone = America/Panama'; } \
+ && { echo 'expose_php = Off'; echo 'max_execution_time = 90'; echo 'date.timezone = America/Panama'; } \
       > "$PHP_INI_DIR/conf.d/zz-msdatabase.ini" \
  && { echo 'ServerTokens Prod'; echo 'ServerSignature Off'; echo 'ServerName localhost'; } \
       > /etc/apache2/conf-available/zz-msdatabase.conf \

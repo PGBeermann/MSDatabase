@@ -3,117 +3,148 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Consulta EI-MS</title>
+<title>MSDatabase · Espectros</title>
 <style>
   :root{
     --bg:#f6f7f9; --panel:#fff; --tx:#1d2330; --mut:#5b6474; --ln:#dde1e7;
-    --acc:#0b5ea8; --bar:#0b5ea8; --base:#c0392b; --err:#a3261b;
+    --acc:#0b5ea8; --bar:#0b5ea8; --base:#c0392b; --err:#a3261b; --tab:#eef1f5;
   }
   @media (prefers-color-scheme: dark){
     :root{ --bg:#14171c; --panel:#1c2027; --tx:#e6e9ee; --mut:#9aa3b2; --ln:#2c323c;
-           --acc:#5aa9f0; --bar:#5aa9f0; --base:#ff7a6b; --err:#ff8a7f; }
+           --acc:#5aa9f0; --bar:#5aa9f0; --base:#ff7a6b; --err:#ff8a7f; --tab:#232831; }
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-  main{max-width:960px;margin:0 auto;padding:24px 16px 48px}
+  main{max-width:980px;margin:0 auto;padding:24px 16px 48px}
   h1{font-size:1.4rem;margin:0 0 4px}
   .sub{color:var(--mut);margin:0 0 20px;font-size:.9rem}
-  form{display:flex;gap:8px;flex-wrap:wrap}
+  form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   input[type=text]{flex:1 1 260px;padding:10px 12px;border:1px solid var(--ln);border-radius:6px;background:var(--panel);color:var(--tx);font-size:1rem}
-  select,button{padding:10px 14px;border-radius:6px;border:1px solid var(--ln);background:var(--panel);color:var(--tx);font-size:.95rem}
-  button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600;cursor:pointer}
+  select,button{padding:9px 13px;border-radius:6px;border:1px solid var(--ln);background:var(--panel);color:var(--tx);font-size:.95rem}
+  button{cursor:pointer}
+  button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
   button:disabled{opacity:.55;cursor:wait}
+  .chk{display:flex;gap:12px;flex-wrap:wrap;font-size:.9rem;color:var(--mut);width:100%}
+  .chk label{display:flex;gap:5px;align-items:center;cursor:pointer}
   .panel{background:var(--panel);border:1px solid var(--ln);border-radius:8px;padding:16px;margin-top:18px}
   .estado{margin-top:14px;color:var(--mut);min-height:1.4em}
   .estado.err{color:var(--err)}
   dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0}
-  dt{color:var(--mut)} dd{margin:0;word-break:break-all}
-  .fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
-  svg{width:100%;height:auto;display:block}
-  .tabla-wrap{max-height:420px;overflow:auto;border:1px solid var(--ln);border-radius:6px;margin-top:12px}
+  dt{color:var(--mut)} dd{margin:0;word-break:break-word}
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;margin:18px 0 0;border-bottom:1px solid var(--ln)}
+  .tabs button{border:1px solid var(--ln);border-bottom:none;border-radius:6px 6px 0 0;background:var(--tab);color:var(--mut);padding:8px 14px}
+  .tabs button[aria-selected=true]{background:var(--panel);color:var(--tx);font-weight:600;position:relative;top:1px}
+  .tabs button:disabled{opacity:.45;cursor:not-allowed}
+  .fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  svg{width:100%;height:auto;display:block;margin-top:8px}
+  .tabla-wrap{max-height:380px;overflow:auto;border:1px solid var(--ln);border-radius:6px;margin-top:12px}
   table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
   th,td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--ln)}
   th{position:sticky;top:0;background:var(--panel);color:var(--mut);font-weight:600}
+  td.izq,th.izq{text-align:left}
   tr.base td{color:var(--base);font-weight:700}
-  .nota{font-size:.82rem;color:var(--mut);margin-top:14px}
+  .vacio{color:var(--mut);padding:18px 0}
+  .nota{font-size:.82rem;color:var(--mut);margin-top:12px}
+  .avisos{font-size:.85rem;color:var(--mut);margin:10px 0 0;padding-left:18px}
   a{color:var(--acc)}
   .oculto{display:none}
 </style>
 </head>
 <body>
 <main>
-  <h1>Espectros de masas EI: tabla m/z</h1>
+  <h1>Espectros de compuestos orgánicos: EM, IR y RMN</h1>
   <p class="sub">Escriba el nombre del compuesto en inglés, su número CAS o su InChIKey. Las consultas se hacen de una en una.</p>
 
   <form id="f" autocomplete="off">
     <input id="q" type="text" placeholder="p. ej. benzoic acid · 65-85-0 · acetophenone" required maxlength="150">
-    <select id="max" title="Número máximo de espectros">
-      <option value="1">1 espectro</option>
-      <option value="3" selected>3 espectros</option>
-      <option value="5">5 espectros</option>
+    <select id="max" title="Número máximo de espectros por técnica">
+      <option value="1">1 por técnica</option>
+      <option value="3" selected>3 por técnica</option>
+      <option value="5">5 por técnica</option>
     </select>
     <button class="pri" id="btn" type="submit">Consultar</button>
+    <div class="chk">
+      <label><input type="checkbox" name="t" value="ms" checked> EM (EI)</label>
+      <label><input type="checkbox" name="t" value="ir" checked> IR</label>
+      <label><input type="checkbox" name="t" value="rmn" checked> RMN ¹H / ¹³C</label>
+    </div>
   </form>
   <div id="estado" class="estado" role="status" aria-live="polite"></div>
 
   <section id="res" class="panel oculto">
     <dl id="info"></dl>
+    <ul id="avisos" class="avisos"></ul>
 
-    <div class="fila">
-      <label for="sel">Espectro:</label>
-      <select id="sel"></select>
-      <button type="button" id="bJson">Descargar JSON</button>
-      <button type="button" id="bCsv">Descargar CSV</button>
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-t="ms">EM</button>
+      <button role="tab" data-t="ir">IR</button>
+      <button role="tab" data-t="h1">RMN ¹H</button>
+      <button role="tab" data-t="c13">RMN ¹³C</button>
     </div>
-    <dl id="meta"></dl>
 
-    <svg id="graf" viewBox="0 0 900 300" role="img" aria-label="Espectro de masas"></svg>
-
-    <div class="tabla-wrap">
-      <table>
-        <thead><tr><th>m/z</th><th>Intensidad</th><th>Int. relativa (%)</th></tr></thead>
-        <tbody id="tb"></tbody>
-      </table>
+    <div id="vista">
+      <div class="fila">
+        <label for="sel">Espectro:</label>
+        <select id="sel"></select>
+        <button type="button" id="bCsv">Descargar CSV</button>
+        <button type="button" id="bJson">Descargar JSON completo</button>
+      </div>
+      <dl id="meta"></dl>
+      <svg id="graf" viewBox="0 0 900 300" role="img" aria-label="Espectro"></svg>
+      <div class="tabla-wrap"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
+      <p class="nota" id="notaVista"></p>
     </div>
+    <p class="vacio oculto" id="vacio">No hay espectros de este tipo para el compuesto.</p>
+    <p class="nota" id="enlaces"></p>
     <p class="nota" id="cita"></p>
   </section>
 </main>
 
 <script>
 (() => {
-  const API = 'ms_api.php';            // ruta relativa al PHP
+  const API = 'ms_api.php';
   const $ = id => document.getElementById(id);
-  let datos = null, ocupado = false;
+  let datos = null, ocupado = false, pestana = 'ms';
 
   const esc = s => String(s ?? '—').replace(/[&<>"']/g, c =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const enlace = (url, txt) => url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)}</a>` : esc(txt);
 
   function estado(msg, error = false) {
     $('estado').textContent = msg;
     $('estado').classList.toggle('err', error);
   }
-
   function dl(el, pares) {
     el.innerHTML = pares.filter(p => p[1] !== null && p[1] !== undefined && p[1] !== '')
       .map(([k, v, html]) => `<dt>${esc(k)}</dt><dd>${html ? v : esc(v)}</dd>`).join('');
   }
 
+  // Cada pestaña describe dónde están sus espectros y cómo mostrarlos.
+  const VISTAS = {
+    ms:  { lista: d => d.espectros || [], nombre: e => `${e.accession} · ${e.tipo_instrumento}` },
+    ir:  { lista: d => d.ir || [],        nombre: e => `${e.id} · ${e.estado || e.titulo || ''}` },
+    h1:  { lista: d => d.rmn?.['1H'] || [],  nombre: e => `${e.fuente} · ${e.frecuencia || ''} ${e.disolvente || ''}` },
+    c13: { lista: d => d.rmn?.['13C'] || [], nombre: e => `${e.fuente} · ${e.frecuencia || ''} ${e.disolvente || ''}` },
+  };
+
   $('f').addEventListener('submit', async ev => {
     ev.preventDefault();
     if (ocupado) return;                         // una consulta a la vez
     const q = $('q').value.trim();
-    if (!q) return;
+    const tipos = [...document.querySelectorAll('input[name=t]:checked')].map(c => c.value);
+    if (!q || !tipos.length) { estado('Indique el compuesto y al menos una técnica.', true); return; }
     ocupado = true; $('btn').disabled = true;
-    estado('Consultando…');
+    estado('Consultando MassBank, NIST, PubChem y NMRShiftDB…');
     $('res').classList.add('oculto');
     try {
-      const url = `${API}?nombre=${encodeURIComponent(q)}&max=${$('max').value}`;
+      const url = `${API}?nombre=${encodeURIComponent(q)}&max=${$('max').value}&tipos=${tipos.join(',')}`;
       const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
       const j = await r.json().catch(() => ({ error: 'Respuesta no válida del servidor.' }));
       if (!r.ok) throw new Error(j.error || `Error HTTP ${r.status}`);
       datos = j;
       mostrar();
-      estado(`${j.devueltos} espectro(s) mostrado(s) de ${j.total_encontrados} encontrado(s).`);
+      const d = j.devueltos;
+      estado(`EM: ${d.ms} · IR: ${d.ir} · RMN ¹H: ${d.rmn_1H} · RMN ¹³C: ${d.rmn_13C}`);
     } catch (e) {
       estado(e.message, true);
     } finally {
@@ -128,61 +159,170 @@
       ['Nombre IUPAC', c.nombre_iupac],
       ['Fórmula', c.formula],
       ['Masa monoisotópica', c.masa_monoisotopica],
+      ['N.º CAS', c.cas],
       ['InChIKey', c.inchikey],
-      ['PubChem CID', c.pubchem_cid ? `<a href="https://pubchem.ncbi.nlm.nih.gov/compound/${encodeURIComponent(c.pubchem_cid)}" target="_blank" rel="noopener">${esc(c.pubchem_cid)}</a>` : null, true],
+      ['PubChem CID', c.pubchem_cid ? enlace(`https://pubchem.ncbi.nlm.nih.gov/compound/${c.pubchem_cid}`, c.pubchem_cid) : null, true],
     ]);
-    $('sel').innerHTML = datos.espectros.map((e, i) =>
-      `<option value="${i}">${esc(e.accession)} · ${esc(e.tipo_instrumento)}</option>`).join('');
-    $('cita').textContent = `Fuente: ${datos.fuente}. ${datos.cita}`;
+    $('avisos').innerHTML = (datos.avisos || []).map(a => `<li>${esc(a)}</li>`).join('');
+    const enl = datos.rmn?.enlaces || [];
+    $('enlaces').innerHTML = enl.length ? 'Otros espectros (solo imagen, en el sitio de origen): ' +
+      enl.map(e => enlace(e.url, `${e.fuente} RMN ${e.nucleo}`)).join(' · ') : '';
+    const f = datos.fuentes || {};
+    $('cita').textContent = 'Fuentes: ' + [f.ms, f.ir, f.rmn].filter(Boolean).join(' | ');
+    // Habilitar pestañas con datos y abrir la primera disponible.
+    let primera = null;
+    document.querySelectorAll('#tabs button').forEach(b => {
+      const n = VISTAS[b.dataset.t].lista(datos).length;
+      b.disabled = n === 0;
+      b.textContent = b.textContent.replace(/ \(\d+\)$/, '') + ` (${n})`;
+      if (n && !primera) primera = b.dataset.t;
+    });
     $('res').classList.remove('oculto');
-    espectro(0);
+    abrir(primera || 'ms');
   }
 
+  document.querySelectorAll('#tabs button').forEach(b =>
+    b.addEventListener('click', () => !b.disabled && abrir(b.dataset.t)));
+
+  function abrir(t) {
+    pestana = t;
+    document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === t));
+    const lista = VISTAS[t].lista(datos);
+    $('vista').classList.toggle('oculto', !lista.length);
+    $('vacio').classList.toggle('oculto', !!lista.length);
+    if (!lista.length) return;
+    $('sel').innerHTML = lista.map((e, i) => `<option value="${i}">${esc(VISTAS[t].nombre(e))}</option>`).join('');
+    espectro(0);
+  }
   $('sel').addEventListener('change', e => espectro(+e.target.value));
 
   function espectro(i) {
-    const e = datos.espectros[i];
+    const e = VISTAS[pestana].lista(datos)[i];
+    if (pestana === 'ms') verMS(e); else if (pestana === 'ir') verIR(e); else verRMN(e);
+  }
+
+  // ---------------------------------------------------------------- EM
+  function verMS(e) {
     dl($('meta'), [
-      ['Registro', `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.accession)}</a>`, true],
+      ['Registro', enlace(e.url, e.accession), true],
       ['Título', e.titulo],
       ['Instrumento', [e.instrumento, e.tipo_instrumento].filter(Boolean).join(' · ')],
       ['Energía de ionización', e.energia_ionizacion],
       ['Pico base (m/z)', e.pico_base_mz],
-      ['N.º de picos', e.num_picos],
       ['Licencia', e.licencia],
     ]);
+    $('th').innerHTML = '<tr><th>m/z</th><th>Intensidad</th><th>Int. relativa (%)</th></tr>';
     $('tb').innerHTML = e.picos.map(p =>
-      `<tr class="${p.mz === e.pico_base_mz ? 'base' : ''}"><td>${p.mz}</td><td>${p.intensidad}</td><td>${p.intensidad_relativa.toFixed(1)}</td></tr>`
-    ).join('');
-    grafico(e);
+      `<tr class="${p.mz === e.pico_base_mz ? 'base' : ''}"><td>${p.mz}</td><td>${p.intensidad}</td><td>${p.intensidad_relativa.toFixed(1)}</td></tr>`).join('');
+    $('notaVista').textContent = 'Pico base en rojo. Intensidad relativa respecto del pico base (100 %).';
+    barras(e.picos.map(p => [p.mz, p.intensidad_relativa]), { invertido: false, etiqueta: 'm/z', marca: e.pico_base_mz, dec: 0 });
   }
 
-  // Gráfico de barras (sticks) en SVG
-  function grafico(e) {
-    const W = 900, H = 300, m = { l: 48, r: 14, t: 14, b: 36 };
-    const pw = W - m.l - m.r, ph = H - m.t - m.b;
-    const mzs = e.picos.map(p => p.mz);
-    const x0 = Math.max(0, Math.floor((Math.min(...mzs) - 5) / 10) * 10);
-    const x1 = Math.ceil((Math.max(...mzs) + 5) / 10) * 10;
-    const X = v => m.l + (v - x0) / (x1 - x0) * pw;
-    const Y = v => m.t + ph - v / 100 * ph;
-    const paso = (x1 - x0) > 300 ? 50 : (x1 - x0) > 120 ? 20 : 10;
-    let s = `<g stroke="var(--ln)" stroke-width="1">`;
-    for (let y = 0; y <= 100; y += 25) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(y)}" y2="${Y(y)}"/>`;
-    s += `</g><g fill="var(--mut)" font-size="12">`;
-    for (let y = 0; y <= 100; y += 25) s += `<text x="${m.l - 6}" y="${Y(y) + 4}" text-anchor="end">${y}</text>`;
-    for (let v = x0; v <= x1; v += paso) s += `<text x="${X(v)}" y="${H - 14}" text-anchor="middle">${v}</text>`;
-    s += `<text x="${m.l + pw / 2}" y="${H - 1}" text-anchor="middle">m/z</text></g>`;
-    s += e.picos.map(p => {
-      const col = p.mz === e.pico_base_mz ? 'var(--base)' : 'var(--bar)';
-      return `<line x1="${X(p.mz)}" x2="${X(p.mz)}" y1="${Y(0)}" y2="${Y(p.intensidad_relativa)}" stroke="${col}" stroke-width="2"><title>m/z ${p.mz}: ${p.intensidad_relativa}%</title></line>`;
+  // ---------------------------------------------------------------- IR
+  function verIR(e) {
+    dl($('meta'), [
+      ['Espectro', enlace(e.url, e.id), true],
+      ['Título', e.titulo],
+      ['Estado / muestra', e.estado],
+      ['Técnica', e.tecnica],
+      ['Instrumento', e.instrumento],
+      ['Origen', [e.origen, e.propietario].filter(Boolean).join(' · ')],
+      ['Intervalo', `${e.rango_cm1[0]}–${e.rango_cm1[1]} cm⁻¹`],
+      ['Archivo original', enlace(e.url_jcamp, 'JCAMP-DX (NIST)'), true],
+    ]);
+    $('th').innerHTML = '<tr><th>Número de onda (cm⁻¹)</th><th>Int. relativa (%)</th><th class="izq">Intensidad</th></tr>';
+    const clase = { f: 'fuerte', m: 'media', d: 'débil' };
+    $('tb').innerHTML = e.bandas.map(b =>
+      `<tr><td>${b.numero_onda.toFixed(0)}</td><td>${b.intensidad_relativa.toFixed(1)}</td><td class="izq">${clase[b.clase]}</td></tr>`).join('');
+    $('notaVista').textContent = 'Bandas detectadas automáticamente sobre la absorbancia (valores aproximados); verifique con el espectro original. ' +
+      `La curva muestra ${e.curva.x.length} de ${e.num_puntos_original} puntos.`;
+    lineaIR(e);
+  }
+
+  // ---------------------------------------------------------------- RMN
+  function verRMN(e) {
+    dl($('meta'), [
+      ['Fuente', enlace(e.url, e.fuente), true],
+      ['Núcleo', e.nucleo],
+      ['Frecuencia', e.frecuencia],
+      ['Disolvente', e.disolvente],
+      ['pH', e.ph],
+      ['Temperatura', e.temperatura],
+      ['Instrumento', e.instrumento],
+      ['Licencia', e.licencia],
+    ]);
+    const mult = e.picos.some(p => p.multiplicidad);
+    $('th').innerHTML = `<tr><th>δ (ppm)</th><th>Intensidad</th><th>Int. relativa (%)</th>${mult ? '<th class="izq">Multiplicidad</th>' : ''}</tr>`;
+    $('tb').innerHTML = e.picos.map(p =>
+      `<tr><td>${p.ppm.toFixed(e.nucleo === '1H' ? 2 : 1)}</td><td>${p.intensidad}</td><td>${p.intensidad_relativa.toFixed(1)}</td>${mult ? `<td class="izq">${esc(p.multiplicidad || '')}</td>` : ''}</tr>`).join('');
+    $('notaVista').textContent = e.fuente.startsWith('NMRShiftDB')
+      ? 'Desplazamientos asignados de NMRShiftDB2 (sin intensidades: todas las señales se dibujan iguales). Multiplicidad en 13C: S, D, T, Q = C, CH, CH₂, CH₃.'
+      : 'Lista de picos experimental depositada en PubChem; intensidades relativas a la señal más intensa.';
+    barras(e.picos.map(p => [p.ppm, p.intensidad_relativa]), {
+      invertido: true, etiqueta: 'δ (ppm)', dec: e.nucleo === '1H' ? 1 : 0,
+      rango: e.nucleo === '1H' ? [0, 12] : [0, 220] });
+  }
+
+  // ---------------------------------------------------------------- Gráficos SVG
+  const W = 900, H = 300, M = { l: 52, r: 14, t: 14, b: 38 };
+  const PW = W - M.l - M.r, PH = H - M.t - M.b;
+
+  function ejes(x0, x1, invertido, etiqueta, yTicks, yFmt) {
+    const X = v => M.l + (invertido ? (x1 - v) : (v - x0)) / (x1 - x0) * PW;
+    const span = Math.abs(x1 - x0);
+    const paso = [0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500].find(p => span / p <= 12) || 1000;
+    let s = '<g stroke="var(--ln)" stroke-width="1">';
+    yTicks.forEach(([, py]) => s += `<line x1="${M.l}" x2="${W - M.r}" y1="${py}" y2="${py}"/>`);
+    s += '</g><g fill="var(--mut)" font-size="12">';
+    yTicks.forEach(([v, py]) => s += `<text x="${M.l - 6}" y="${py + 4}" text-anchor="end">${yFmt(v)}</text>`);
+    for (let v = Math.ceil(x0 / paso) * paso; v <= x1 + 1e-9; v += paso)
+      s += `<text x="${X(v)}" y="${H - 16}" text-anchor="middle">${+v.toFixed(2)}</text>`;
+    s += `<text x="${M.l + PW / 2}" y="${H - 1}" text-anchor="middle">${etiqueta}</text></g>`;
+    return { X, s };
+  }
+
+  function barras(puntos, o) {
+    const xs = puntos.map(p => p[0]);
+    let x0, x1;
+    if (o.rango) { x0 = Math.min(o.rango[0], ...xs); x1 = Math.max(o.rango[1], ...xs); }
+    else { x0 = Math.max(0, Math.floor((Math.min(...xs) - 5) / 10) * 10); x1 = Math.ceil((Math.max(...xs) + 5) / 10) * 10; }
+    const Y = v => M.t + PH - v / 100 * PH;
+    const { X, s: base } = ejes(x0, x1, o.invertido, o.etiqueta, [0, 25, 50, 75, 100].map(v => [v, Y(v)]), v => v);
+    let s = base + puntos.map(([x, y]) => {
+      const col = o.marca !== undefined && x === o.marca ? 'var(--base)' : 'var(--bar)';
+      return `<line x1="${X(x)}" x2="${X(x)}" y1="${Y(0)}" y2="${Y(y)}" stroke="${col}" stroke-width="2"><title>${x}: ${y}%</title></line>`;
     }).join('');
-    // Etiquetas de los picos > 20 %
-    s += e.picos.filter(p => p.intensidad_relativa >= 20).map(p =>
-      `<text x="${X(p.mz)}" y="${Y(p.intensidad_relativa) - 4}" text-anchor="middle" font-size="11" fill="var(--tx)">${Math.round(p.mz)}</text>`).join('');
+    // Etiquetas de las señales ≥ 20 %, sin solaparse.
+    let ultimo = -1e9;
+    puntos.filter(p => p[1] >= 20).sort((a, b) => X(a[0]) - X(b[0])).forEach(([x, y]) => {
+      if (X(x) - ultimo < 26) return;
+      ultimo = X(x);
+      s += `<text x="${X(x)}" y="${Y(y) - 4}" text-anchor="middle" font-size="11" fill="var(--tx)">${x.toFixed(o.dec)}</text>`;
+    });
     $('graf').innerHTML = s;
   }
 
+  function lineaIR(e) {
+    const xs = e.curva.x, ys = e.curva.y, esT = e.y_unidad.startsWith('transmit');
+    const x0 = Math.min(...xs), x1 = Math.max(...xs);
+    const y0 = esT ? 0 : Math.min(0, ...ys), y1 = esT ? Math.max(100, ...ys) : Math.max(...ys) * 1.05;
+    const Y = v => M.t + PH - (v - y0) / (y1 - y0) * PH;
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => y0 + f * (y1 - y0));
+    const { X, s: base } = ejes(x0, x1, true, 'Número de onda (cm⁻¹)', ticks.map(v => [v, Y(v)]), v => esT ? v.toFixed(0) : v.toFixed(2));
+    let d = '';
+    xs.forEach((x, i) => d += (i ? 'L' : 'M') + X(x).toFixed(1) + ' ' + Y(ys[i]).toFixed(1));
+    let s = base + `<path d="${d}" fill="none" stroke="var(--bar)" stroke-width="1.4"/>`;
+    s += `<text x="${M.l + 4}" y="${M.t + 12}" font-size="11" fill="var(--mut)">${esc(e.y_unidad)}</text>`;
+    // Marcas de las bandas fuertes y medias
+    e.bandas.filter(b => b.clase !== 'd').forEach(b => {
+      const i = xs.reduce((m, x, k) => Math.abs(x - b.numero_onda) < Math.abs(xs[m] - b.numero_onda) ? k : m, 0);
+      const yy = Y(ys[i]) + (esT ? 14 : -6);
+      s += `<text x="${X(b.numero_onda)}" y="${Math.min(H - M.b - 2, yy)}" text-anchor="middle" font-size="10" fill="var(--base)">${b.numero_onda.toFixed(0)}</text>`;
+    });
+    $('graf').innerHTML = s;
+  }
+
+  // ---------------------------------------------------------------- Descargas
   function descargar(nombre, contenido, tipo) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([contenido], { type: tipo }));
@@ -193,12 +333,16 @@
   const base = () => (datos.compuesto?.nombre || datos.consulta).replace(/[^\w.-]+/g, '_');
 
   $('bJson').addEventListener('click', () =>
-    descargar(`${base()}_EI-MS.json`, JSON.stringify(datos, null, 2), 'application/json'));
+    descargar(`${base()}_espectros.json`, JSON.stringify(datos, null, 2), 'application/json'));
 
   $('bCsv').addEventListener('click', () => {
-    const e = datos.espectros[+$('sel').value];
-    const csv = ['mz,intensidad,intensidad_relativa', ...e.picos.map(p => `${p.mz},${p.intensidad},${p.intensidad_relativa}`)].join('\n');
-    descargar(`${base()}_${e.accession}.csv`, csv, 'text/csv');
+    const e = VISTAS[pestana].lista(datos)[+$('sel').value];
+    let filas;
+    if (pestana === 'ms') filas = ['mz,intensidad,intensidad_relativa', ...e.picos.map(p => `${p.mz},${p.intensidad},${p.intensidad_relativa}`)];
+    else if (pestana === 'ir') filas = [`numero_onda_cm-1,${e.y_unidad.startsWith('transmit') ? 'transmitancia_pct' : 'absorbancia'}`,
+                                        ...e.curva.x.map((x, i) => `${x},${e.curva.y[i]}`)];
+    else filas = ['ppm,intensidad,intensidad_relativa,multiplicidad', ...e.picos.map(p => `${p.ppm},${p.intensidad},${p.intensidad_relativa},${p.multiplicidad || ''}`)];
+    descargar(`${base()}_${pestana}_${String(e.accession || e.id).replace(/[^\w.-]+/g, '_')}.csv`, filas.join('\n'), 'text/csv');
   });
 })();
 </script>
