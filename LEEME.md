@@ -1,7 +1,21 @@
 # MSDatabase — Espectros EM, IR y RMN por nombre de compuesto
 
 `GET ms_api.php?nombre=<nombre en inglés | CAS | InChIKey>&max=1..5&tipos=ms,ir,rmn` → JSON
-`index.html` — interfaz de consulta (una consulta a la vez), con pestañas EM / IR / RMN ¹H / RMN ¹³C.
+`GET ms_api.php?smiles=<SMILES codificado en URL>&…` → JSON (búsqueda por estructura)
+`index.html` — interfaz de consulta (una consulta a la vez), con editor de estructuras JSME y
+pestañas EM / IR / RMN ¹H / RMN ¹³C.
+
+### Búsqueda por estructura (JSME)
+- El panel «Buscar por estructura» integra el editor JSME (Bienfait & Ertl, *J. Cheminform.* 2013, 5, 24;
+  licencia BSD-3). Al dibujar, el SMILES se actualiza en el campo de texto; también puede pegarse un SMILES
+  y pulsar «↑ Dibujar».
+- El servidor envía el SMILES a PubChem como parámetro `?smiles=` (no en la ruta, porque `/`, `\` y `#`
+  rompen la URL) y continúa con el InChIKey/CAS/InChI obtenidos, igual que en la búsqueda por nombre.
+- Solo se encuentran espectros de compuestos **registrados en PubChem**; una estructura nueva devuelve 404.
+  Se rechazan SMILES con varios fragmentos (`.`).
+- El Dockerfile descarga JSME 2024.4.29 de npm, verifica su SHA-1 y lo sirve en `/jsme/`. Sin Docker,
+  copie el contenido del paquete npm `jsme-editor` a una carpeta `jsme/` junto a `index.html`; si no
+  existe, la página lo carga desde jsDelivr.
 
 | Técnica | Fuente | Acceso | Datos que se devuelven |
 |---|---|---|---|
@@ -43,7 +57,7 @@ El VPS debe tener salida HTTPS hacia `massbank.eu`, `pubchem.ncbi.nlm.nih.gov`,
 ## Instalación alternativa sin Docker (Apache o Nginx + PHP-FPM)
 
 - PHP ≥ 7.4 con `curl`, `mbstring` y `dom`: `apt install php-curl php-mbstring php-xml` y reinicie PHP-FPM/Apache.
-- Copie `index.html` y `ms_api.php` a la carpeta pública.
+- Copie `index.html` y `ms_api.php` a la carpeta pública (y, opcionalmente, JSME en `jsme/`).
 - Cree la caché **fuera** de la raíz web y dele permisos:
 
       mkdir -p /var/www/msdatabase-cache && chown www-data: /var/www/msdatabase-cache && chmod 750 /var/www/msdatabase-cache
@@ -59,7 +73,7 @@ El VPS debe tener salida HTTPS hacia `massbank.eu`, `pubchem.ncbi.nlm.nih.gov`,
 
 ## Respuesta (200)
 
-    consulta, tipos, compuesto {nombre, nombre_iupac, formula, masa_monoisotopica, inchikey, inchi, cas, pubchem_cid},
+    consulta, modo (nombre | smiles), tipos, compuesto {nombre, nombre_iupac, formula, masa_monoisotopica, inchikey, inchi, cas, pubchem_cid},
     devueltos {ms, ir, rmn_1H, rmn_13C},
     espectros [ {accession, titulo, instrumento, tipo_instrumento, energia_ionizacion, licencia, url,
                  num_picos, pico_base_mz, picos [ {mz, intensidad, intensidad_relativa} ] } ],
