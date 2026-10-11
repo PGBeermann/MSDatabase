@@ -20,8 +20,8 @@
   .sub{color:var(--mut);margin:0 0 20px;font-size:.9rem}
   form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   input[type=text]{flex:1 1 260px;padding:10px 12px;border:1px solid var(--ln);border-radius:6px;background:var(--panel);color:var(--tx);font-size:1rem}
-  select,button{padding:9px 13px;border-radius:6px;border:1px solid var(--ln);background:var(--panel);color:var(--tx);font-size:.95rem}
-  button{cursor:pointer}
+  form select,form button,.fila select,.fila button,.tabs button{padding:9px 13px;border-radius:6px;border:1px solid var(--ln);background:var(--panel);color:var(--tx);font-size:.95rem}
+  form button,.fila button,.tabs button{cursor:pointer}
   button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
   button:disabled{opacity:.55;cursor:wait}
   .chk{display:flex;gap:12px;flex-wrap:wrap;font-size:.9rem;color:var(--mut);width:100%}
@@ -29,31 +29,35 @@
   .panel{background:var(--panel);border:1px solid var(--ln);border-radius:8px;padding:16px;margin-top:18px}
   .estado{margin-top:14px;color:var(--mut);min-height:1.4em}
   .estado.err{color:var(--err)}
-  dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0}
-  dt{color:var(--mut)} dd{margin:0;word-break:break-word}
+  #info,#meta{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0}
+  #info dt,#meta dt{color:var(--mut)} #info dd,#meta dd{margin:0;word-break:break-word}
   .tabs{display:flex;gap:4px;flex-wrap:wrap;margin:18px 0 0;border-bottom:1px solid var(--ln)}
   .tabs button{border:1px solid var(--ln);border-bottom:none;border-radius:6px 6px 0 0;background:var(--tab);color:var(--mut);padding:8px 14px}
   .tabs button[aria-selected=true]{background:var(--panel);color:var(--tx);font-weight:600;position:relative;top:1px}
   .tabs button:disabled{opacity:.45;cursor:not-allowed}
   .fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0}
-  svg{width:100%;height:auto;display:block;margin-top:8px}
+  #graf{width:100%;height:auto;display:block;margin-top:8px}
   .tabla-wrap{max-height:380px;overflow:auto;border:1px solid var(--ln);border-radius:6px;margin-top:12px}
-  table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
-  th,td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--ln)}
-  th{position:sticky;top:0;background:var(--panel);color:var(--mut);font-weight:600}
-  td.izq,th.izq{text-align:left}
-  tr.base td{color:var(--base);font-weight:700}
+  .tabla-wrap table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+  .tabla-wrap th,.tabla-wrap td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--ln)}
+  .tabla-wrap th{position:sticky;top:0;background:var(--panel);color:var(--mut);font-weight:600}
+  .tabla-wrap td.izq,.tabla-wrap th.izq{text-align:left}
+  .tabla-wrap tr.base td{color:var(--base);font-weight:700}
   .vacio{color:var(--mut);padding:18px 0}
   .nota{font-size:.82rem;color:var(--mut);margin-top:12px}
   .avisos{font-size:.85rem;color:var(--mut);margin:10px 0 0;padding-left:18px}
   a{color:var(--acc)}
   .oculto{display:none}
+  details.panel summary{cursor:pointer;font-weight:600}
+  .jsme-caja{min-height:340px;margin-top:12px;border:1px solid var(--ln);border-radius:6px;background:#fff;overflow:hidden}
+  .jsme-caja .nota{padding:12px;margin:0;color:#5b6474}
+  #smi{flex:1 1 260px;padding:9px 12px;border:1px solid var(--ln);border-radius:6px;background:var(--panel);color:var(--tx);font:14px ui-monospace,Consolas,monospace}
 </style>
 </head>
 <body>
 <main>
   <h1>Espectros de compuestos orgánicos: EM, IR y RMN</h1>
-  <p class="sub">Escriba el nombre del compuesto en inglés, su número CAS o su InChIKey. Las consultas se hacen de una en una.</p>
+  <p class="sub">Escriba el nombre del compuesto en inglés, su número CAS o su InChIKey, o dibuje la estructura en el editor JSME. Las consultas se hacen de una en una.</p>
 
   <form id="f" autocomplete="off">
     <input id="q" type="text" placeholder="p. ej. benzoic acid · 65-85-0 · acetophenone" required maxlength="150">
@@ -69,6 +73,17 @@
       <label><input type="checkbox" name="t" value="rmn" checked> RMN ¹H / ¹³C</label>
     </div>
   </form>
+  <details id="dibujo" class="panel">
+    <summary>Buscar por estructura: dibujar en JSME o pegar un SMILES</summary>
+    <div id="jsme" class="jsme-caja"><p class="nota" id="jsmeEstado">Cargando el editor JSME…</p></div>
+    <div class="fila">
+      <input id="smi" type="text" placeholder="SMILES (se actualiza al dibujar; también puede pegarlo)" maxlength="500" spellcheck="false" autocomplete="off">
+      <button type="button" id="bDibujar" title="Mostrar en el editor el SMILES escrito">↑ Dibujar</button>
+      <button type="button" id="bLimpiar">Limpiar</button>
+      <button type="button" class="pri" id="bSmi">Buscar por estructura</button>
+    </div>
+    <p class="nota">Editor JSME (Bienfait B., Ertl P. <i>J. Cheminform.</i> 2013, 5, 24; licencia BSD). La estructura se identifica en PubChem; solo se encuentran espectros de compuestos registrados.</p>
+  </details>
   <div id="estado" class="estado" role="status" aria-live="polite"></div>
 
   <section id="res" class="panel oculto">
@@ -127,17 +142,25 @@
     c13: { lista: d => d.rmn?.['13C'] || [], nombre: e => `${e.fuente} · ${e.frecuencia || ''} ${e.disolvente || ''}` },
   };
 
-  $('f').addEventListener('submit', async ev => {
+  $('f').addEventListener('submit', ev => {
     ev.preventDefault();
+    consultar('nombre', $('q').value.trim());
+  });
+  $('bSmi').addEventListener('click', () => {
+    const s = $('smi').value.trim();
+    if (!s) { estado('Dibuje una estructura o escriba un SMILES.', true); return; }
+    consultar('smiles', s);
+  });
+
+  async function consultar(param, valor) {
     if (ocupado) return;                         // una consulta a la vez
-    const q = $('q').value.trim();
     const tipos = [...document.querySelectorAll('input[name=t]:checked')].map(c => c.value);
-    if (!q || !tipos.length) { estado('Indique el compuesto y al menos una técnica.', true); return; }
-    ocupado = true; $('btn').disabled = true;
+    if (!valor || !tipos.length) { estado('Indique el compuesto y al menos una técnica.', true); return; }
+    ocupado = true; $('btn').disabled = true; $('bSmi').disabled = true;
     estado('Consultando MassBank, NIST, PubChem y NMRShiftDB…');
     $('res').classList.add('oculto');
     try {
-      const url = `${API}?nombre=${encodeURIComponent(q)}&max=${$('max').value}&tipos=${tipos.join(',')}`;
+      const url = `${API}?${param}=${encodeURIComponent(valor)}&max=${$('max').value}&tipos=${tipos.join(',')}`;
       const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
       const j = await r.json().catch(() => ({ error: 'Respuesta no válida del servidor.' }));
       if (!r.ok) throw new Error(j.error || `Error HTTP ${r.status}`);
@@ -148,9 +171,42 @@
     } catch (e) {
       estado(e.message, true);
     } finally {
-      ocupado = false; $('btn').disabled = false;
+      ocupado = false; $('btn').disabled = false; $('bSmi').disabled = false;
     }
+  }
+
+  // ---------------------------------------------------------------- Editor JSME
+  // Se sirve localmente (carpeta jsme/, instalada por el Dockerfile); si falta, se usa jsDelivr.
+  let jsme = null;
+  function crearJSME() {
+    if (jsme || !window.JSApplet || !$('dibujo').open) return;
+    const caja = $('jsme');
+    caja.innerHTML = '';
+    jsme = new JSApplet.JSME('jsme', Math.max(300, caja.clientWidth) + 'px', '340px', { options: 'nosearchinchiKey' });
+    jsme.setCallBack('AfterStructureModified', () => { $('smi').value = jsme.smiles(); });
+    if ($('smi').value.trim()) jsme.readGenericMolecularInput($('smi').value.trim());
+  }
+  window.jsmeOnLoad = crearJSME;                 // JSME llama a esta función al terminar de cargar
+  $('dibujo').addEventListener('toggle', crearJSME);
+  window.addEventListener('resize', () => {
+    if (jsme) jsme.setSize(Math.max(300, $('jsme').clientWidth) + 'px', '340px');
   });
+  $('bDibujar').addEventListener('click', () => {
+    if (jsme && $('smi').value.trim()) jsme.readGenericMolecularInput($('smi').value.trim());
+  });
+  $('bLimpiar').addEventListener('click', () => { if (jsme) jsme.reset(); $('smi').value = ''; });
+  $('smi').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('bSmi').click(); } });
+
+  function cargarScript(src, alFallar) {
+    const s = document.createElement('script');
+    s.src = src; s.async = true;
+    if (alFallar) s.onerror = alFallar;
+    document.head.appendChild(s);
+  }
+  cargarScript('jsme/jsme.nocache.js', () =>
+    cargarScript('https://cdn.jsdelivr.net/npm/jsme-editor@2024.4.29/jsme.nocache.js', () => {
+      $('jsmeEstado').textContent = 'No se pudo cargar el editor JSME. Puede escribir el SMILES directamente.';
+    }));
 
   function mostrar() {
     const c = datos.compuesto || {};

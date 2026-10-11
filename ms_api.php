@@ -15,6 +15,7 @@
  * Uso:   GET ms_api.php?nombre=benzoic%20acid[&max=3][&tipos=ms,ir,rmn]
  *        GET ms_api.php?nombre=65-85-0
  *        GET ms_api.php?nombre=WPYMKLBDIGXBTP-UHFFFAOYSA-N
+ *        GET ms_api.php?smiles=OC(%3DO)c1ccccc1      (estructura dibujada en JSME)
  *
  * Requisitos: PHP >= 7.4 con cURL, mbstring y DOM. Caché escribible (MS_CACHE_DIR).
  *
@@ -241,12 +242,25 @@ function casValido(string $cas): bool
     return $suma % 10 === (int) $m[3];
 }
 
-function resolverCompuesto(string $q): ?array
+/**
+ * Resuelve el compuesto en PubChem. $modo: 'nombre' (nombre, CAS o InChIKey) o 'smiles'.
+ * El SMILES va como parámetro de consulta (?smiles=), no en la ruta, porque puede contener
+ * "/", "\" o "#", que rompen la sintaxis de la URL de PUG REST.
+ */
+function resolverCompuesto(string $q, string $modo = 'nombre'): ?array
 {
-    $esInchiKey = (bool) preg_match('/^[A-Z]{14}-[A-Z]{10}-[A-Z]$/', $q);
-    $ruta = $esInchiKey ? '/compound/inchikey/' . rawurlencode($q) : '/compound/name/' . rawurlencode($q);
-    $url = PC_API . $ruta . '/property/InChI,InChIKey,MolecularFormula,MonoisotopicMass,IUPACName,Title/JSON';
+    $props = '/property/InChI,InChIKey,MolecularFormula,MonoisotopicMass,IUPACName,Title/JSON';
+    $esInchiKey = $modo === 'nombre' && (bool) preg_match('/^[A-Z]{14}-[A-Z]{10}-[A-Z]$/', $q);
+    if ($modo === 'smiles') {
+        $url = PC_API . '/compound/smiles' . $props . '?smiles=' . rawurlencode($q);
+    } else {
+        $ruta = $esInchiKey ? '/compound/inchikey/' . rawurlencode($q) : '/compound/name/' . rawurlencode($q);
+        $url = PC_API . $ruta . $props;
+    }
     $p = jsonDe(httpGet($url))['PropertyTable']['Properties'][0] ?? null;
+    if ($p !== null && empty($p['CID'])) {
+        $p = null;   // PubChem responde CID 0 cuando la estructura no está registrada
+    }
 
     if ($p === null) {
         return $esInchiKey ? ['nombre' => null, 'nombre_iupac' => null, 'formula' => null,
@@ -344,14 +358,14 @@ function normalizarRegistroMB(array $rec): ?array
     ];
 }
 
-function espectrosMasas(?array $comp, string $q, int $max, array &$avisos): array
+function espectrosMasas(?array $comp, string $q, int $max, array &$avisos, bool $porNombre = true): array
 {
     $verificarNombre = false;
     $cand = [];
     if ($comp && !empty($comp['inchikey'])) {
         $cand = accesionesDe(jsonDe(httpGet(urlBusquedaMassBank(['inchi_key' => $comp['inchikey']]))));
     }
-    if (!$cand) {
+    if (!$cand && $porNombre) {
         // Respaldo: búsqueda por nombre (subcadena) con verificación de nombre exacto.
         $cand = accesionesDe(jsonDe(httpGet(urlBusquedaMassBank(['compound_name' => $q]))));
         usort($cand, fn($a, $b) => $a['atomcount'] <=> $b['atomcount']);
@@ -886,13 +900,27 @@ function urlNmrShiftDB(string $inchi, string $nucleo): string
 }
 
 // ================================================================== Programa principal
-$q = trim((string) ($_GET['nombre'] ?? ''));
-$q = preg_replace('/\s+/u', ' ', $q);
-if ($q === '' || mb_strlen($q) > 150) {
-    responder(400, ['error' => 'Parámetro "nombre" requerido (1–150 caracteres).']);
-}
-if (preg_match('/[\x00-\x1F<>{}]/u', $q)) {
-    responder(400, ['error' => 'El nombre contiene caracteres no válidos.']);
+$smiles = trim((string) ($_GET['smiles'] ?? ''));
+if ($smiles !== '') {
+    // Búsqueda por estructura (SMILES dibujado en JSME o pegado por el usuario).
+    $modo = 'smiles';
+    $q = $smiles;
+    if (strlen($q) > 500 || !preg_match('/^[A-Za-z0-9@+\-\[\]()\\\\\/=#$%.:*~]+$/', $q)) {
+        responder(400, ['error' => 'SMILES no válido (máximo 500 caracteres, sin espacios).']);
+    }
+    if (strpos($q, '.') !== false) {
+        responder(400, ['error' => 'El SMILES contiene varios fragmentos (".") ; dibuje una sola molécula.']);
+    }
+} else {
+    $modo = 'nombre';
+    $q = trim((string) ($_GET['nombre'] ?? ''));
+    $q = preg_replace('/\s+/u', ' ', $q);
+    if ($q === '' || mb_strlen($q) > 150) {
+        responder(400, ['error' => 'Indique "nombre" (1–150 caracteres) o "smiles".']);
+    }
+    if (preg_match('/[\x00-\x1F<>{}]/u', $q)) {
+        responder(400, ['error' => 'El nombre contiene caracteres no válidos.']);
+    }
 }
 $max = max(1, min(MAX_ESPECTROS, (int) ($_GET['max'] ?? 3)));
 $tipos = array_intersect(
@@ -904,7 +932,7 @@ asegurarCache();
 limitarFrecuencia();
 
 $avisos = [];
-$comp = resolverCompuesto($q);
+$comp = resolverCompuesto($q, $modo);
 $cid = $comp['pubchem_cid'] ?? null;
 
 // Descarga paralela de lo que depende del CID / InChI.
@@ -933,7 +961,7 @@ $resultado = [];
 
 // --- EM
 if (in_array('ms', $tipos, true)) {
-    $resultado['espectros'] = espectrosMasas($comp, $q, $max, $avisos);
+    $resultado['espectros'] = espectrosMasas($comp, $q, $max, $avisos, $modo === 'nombre');
 }
 
 // --- IR
@@ -976,16 +1004,20 @@ $total = count($resultado['espectros'] ?? []) + count($resultado['ir'] ?? [])
 if ($total === 0) {
     responder(404, [
         'consulta'  => $q,
+        'modo'      => $modo,
         'compuesto' => $comp,
         'avisos'    => $avisos,
         'error'     => $comp
             ? 'El compuesto existe en PubChem, pero no se encontraron espectros en las fuentes consultadas.'
-            : 'Compuesto no encontrado. Use el nombre en inglés, el número CAS o el InChIKey.',
+            : ($modo === 'smiles'
+                ? 'La estructura no está registrada en PubChem; no hay espectros experimentales asociados.'
+                : 'Compuesto no encontrado. Use el nombre en inglés, el número CAS o el InChIKey.'),
     ]);
 }
 
 responder(200, [
     'consulta'  => $q,
+    'modo'      => $modo,
     'tipos'     => array_values($tipos),
     'compuesto' => $comp,
     'devueltos' => [

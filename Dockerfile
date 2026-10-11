@@ -10,6 +10,16 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
       > /etc/apache2/conf-available/zz-msdatabase.conf \
  && a2enconf zz-msdatabase
 
+# Editor de estructuras JSME (BSD-3), servido localmente desde /jsme/.
+# Se descarga de npm y se verifica su SHA-1 publicado (dist.shasum).
+ARG JSME_VERSION=2024.4.29
+ARG JSME_SHA1=e82af48b1e5bd4496f10fd5ead35fa0a6d81618f
+RUN curl -fsSL -o /tmp/jsme.tgz "https://registry.npmjs.org/jsme-editor/-/jsme-editor-${JSME_VERSION}.tgz" \
+ && echo "${JSME_SHA1}  /tmp/jsme.tgz" | sha1sum -c - \
+ && mkdir -p /tmp/jsme && tar -xzf /tmp/jsme.tgz -C /tmp/jsme \
+ && mv /tmp/jsme/package /var/www/html/jsme \
+ && rm -rf /tmp/jsme /tmp/jsme.tgz
+
 # Solo los archivos públicos van a la raíz web
 COPY index.html ms_api.php /var/www/html/
 
