@@ -1,27 +1,38 @@
-# MSDatabase — PHP 8.3 + Apache, listo para Dokploy
-# La imagen oficial ya incluye las extensiones curl, mbstring, dom, json y filter.
-FROM php:8.3-apache
+# MSDatabase — imagen para Dokploy (Build Type: Dockerfile)
+# Etapa 1 (Node): empaqueta el motor EI-MS (vendor/eims-engine), RDKit.js y JSME.
+# Etapa 2 (PHP 8.3 + Apache): sirve la interfaz, el servicio ms_api.php y los recursos construidos.
 
-# Configuración PHP de producción
+FROM node:22-bookworm-slim AS build
+WORKDIR /src
+COPY package.json package-lock.json ./
+# npm ci verifica la integridad (SHA-512) de cada paquete contra package-lock.json
+RUN npm ci --no-audit --no-fund
+COPY build.mjs ./
+COPY src-js ./src-js
+COPY vendor ./vendor
+RUN node build.mjs
+
+
+FROM php:8.3-apache
+# La imagen oficial ya incluye las extensiones curl, mbstring, dom, json y filter.
+
+# Configuración PHP y Apache de producción; WebAssembly con su tipo MIME, comprimido y con caché larga
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
  && { echo 'expose_php = Off'; echo 'max_execution_time = 90'; echo 'date.timezone = America/Panama'; } \
       > "$PHP_INI_DIR/conf.d/zz-msdatabase.ini" \
- && { echo 'ServerTokens Prod'; echo 'ServerSignature Off'; echo 'ServerName localhost'; } \
+ && a2enmod headers deflate \
+ && { echo 'ServerTokens Prod'; echo 'ServerSignature Off'; echo 'ServerName localhost'; \
+      echo 'AddType application/wasm .wasm'; \
+      echo 'AddOutputFilterByType DEFLATE application/wasm application/javascript text/javascript text/css text/html application/json'; \
+      echo '<LocationMatch "^/(rdkit|jsme)/">'; echo '  Header set Cache-Control "public, max-age=2592000, immutable"'; echo '</LocationMatch>'; \
+      echo '<LocationMatch "^/js/">'; echo '  Header set Cache-Control "public, max-age=3600"'; echo '</LocationMatch>'; } \
       > /etc/apache2/conf-available/zz-msdatabase.conf \
  && a2enconf zz-msdatabase
 
-# Editor de estructuras JSME (BSD-3), servido localmente desde /jsme/.
-# Se descarga de npm y se verifica su SHA-1 publicado (dist.shasum).
-ARG JSME_VERSION=2024.4.29
-ARG JSME_SHA1=e82af48b1e5bd4496f10fd5ead35fa0a6d81618f
-RUN curl -fsSL -o /tmp/jsme.tgz "https://registry.npmjs.org/jsme-editor/-/jsme-editor-${JSME_VERSION}.tgz" \
- && echo "${JSME_SHA1}  /tmp/jsme.tgz" | sha1sum -c - \
- && mkdir -p /tmp/jsme && tar -xzf /tmp/jsme.tgz -C /tmp/jsme \
- && mv /tmp/jsme/package /var/www/html/jsme \
- && rm -rf /tmp/jsme /tmp/jsme.tgz
-
-# Solo los archivos públicos van a la raíz web
+# Recursos construidos (js/eims-engine.js, rdkit/, jsme/) y archivos de la aplicación
+COPY --from=build /src/build/ /var/www/html/
 COPY index.html ms_api.php /var/www/html/
+COPY js/ /var/www/html/js/
 
 # Caché fuera de la raíz web, con escritura para Apache (www-data)
 RUN mkdir -p /var/www/cache \

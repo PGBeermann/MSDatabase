@@ -605,10 +605,24 @@ function detectarBandasIR(array $x, array $a): array
         $prom = $a[$i] - max($minIzq, $minDer);
         if ($prom >= 0.05 * $rango) {
             $rel = ($a[$i] - $amin) / $rango * 100;
+            // Anchura a media prominencia (cm⁻¹): distingue bandas anchas (O–H con puente de H)
+            // de bandas agudas (≡C–H, N–H libre, C≡N).
+            $mitad = $a[$i] - $prom / 2;
+            $iz = $i;
+            while ($iz > 0 && $a[$iz] > $mitad && $i - $iz < $ventana) {
+                $iz--;
+            }
+            $de = $i;
+            while ($de < $n - 1 && $a[$de] > $mitad && $de - $i < $ventana) {
+                $de++;
+            }
+            $ancho = abs($x[$iz] - $x[$de]);
             $bandas[] = [
                 'numero_onda'         => round($x[$i], 1),
                 'intensidad_relativa' => round($rel, 1),
                 'clase'               => $rel >= 66 ? 'f' : ($rel >= 33 ? 'm' : 'd'),   // fuerte, media, débil
+                'ancho'               => round($ancho, 0),
+                'forma'               => $ancho >= 150 ? 'muy ancha' : ($ancho >= 60 ? 'ancha' : ($ancho <= 25 ? 'aguda' : 'media')),
             ];
         }
     }
@@ -938,6 +952,8 @@ $cid = $comp['pubchem_cid'] ?? null;
 // Descarga paralela de lo que depende del CID / InChI.
 $urlsAux = [];
 if ($cid) {
+    // Estructura 2D (molfile) para la interpretación en el navegador con RDKit.js.
+    $urlsAux['sdf'] = PC_API . '/compound/cid/' . $cid . '/SDF?record_type=2d';
     if (in_array('ir', $tipos, true) && empty($comp['cas'])) {
         $urlsAux['sin'] = PC_API . '/compound/cid/' . $cid . '/synonyms/JSON';
     }
@@ -955,6 +971,17 @@ $r = fn(string $k) => isset($urlsAux[$k]) ? ($aux[$urlsAux[$k]] ?? [0, '']) : [0
 
 if ($comp && empty($comp['cas']) && isset($urlsAux['sin'])) {
     $comp['cas'] = casDeSinonimos(jsonDe($r('sin')));
+}
+if ($comp) {
+    $comp['molfile'] = null;
+    if (isset($urlsAux['sdf'])) {
+        [$cS, $bS] = $r('sdf');
+        $pos = strpos($bS, 'M  END');
+        if ($cS === 200 && $pos !== false && $pos < 200000) {
+            $comp['molfile'] = substr($bS, 0, $pos + 6);
+        }
+    }
+    $comp['smiles'] = $modo === 'smiles' ? $q : null;
 }
 
 $resultado = [];
