@@ -82,6 +82,10 @@
   details.grupo{border:1px solid var(--ln);border-radius:8px;margin:8px 0;padding:6px 10px}
   details.grupo-conjunto{margin-top:14px;border:1px solid var(--ln);border-radius:8px;padding:8px 12px}
   details.grupo-conjunto>summary{cursor:pointer}
+  .fila-formula{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+  #formula{flex:0 1 220px;padding:9px 12px;border:1px solid var(--ln);border-radius:6px;background:var(--panel);color:var(--tx);font:15px ui-monospace,Consolas,monospace}
+  #isomeros .si{color:var(--ok);font-weight:700} #isomeros .no{color:var(--mut)}
+  #isomeros td.izq a{word-break:break-word}
   details.grupo summary{cursor:pointer;display:flex;gap:10px;align-items:center}
   .rmn-grid{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start}
   @media (max-width:760px){.ion-body,.rmn-grid{grid-template-columns:1fr}}
@@ -94,7 +98,7 @@
 <body>
 <main>
   <h1>Espectros de compuestos orgánicos: EM, IR y RMN</h1>
-  <p class="sub">Escriba el nombre del compuesto en inglés, su número CAS o su InChIKey, o dibuje la estructura en el editor JSME. Las consultas se hacen de una en una.</p>
+  <p class="sub">Escriba el nombre del compuesto en inglés, su número CAS o su InChIKey, dibuje la estructura en el editor JSME o busque los isómeros de una fórmula molecular. Las consultas se hacen de una en una.</p>
 
   <form id="f" autocomplete="off">
     <input id="q" type="text" placeholder="p. ej. benzoic acid · 65-85-0 · acetophenone" required maxlength="150">
@@ -110,6 +114,13 @@
       <label><input type="checkbox" name="t" value="rmn" checked> RMN ¹H / ¹³C</label>
     </div>
   </form>
+  <form id="fFormula" class="fila-formula" autocomplete="off">
+    <label for="formula"><b>Isómeros por fórmula molecular:</b></label>
+    <input id="formula" type="text" placeholder="p. ej. C7H16O" maxlength="40" spellcheck="false">
+    <button type="submit" id="bFormula">Buscar isómeros con espectros</button>
+  </form>
+  <section id="isomeros" class="panel oculto" aria-live="polite"></section>
+
   <details id="dibujo" class="panel">
     <summary>Buscar por estructura: dibujar en JSME o pegar un SMILES</summary>
     <div id="jsme" class="jsme-caja"><p class="nota" id="jsmeEstado">Cargando el editor JSME…</p></div>
@@ -195,6 +206,44 @@
     const s = $('smi').value.trim();
     if (!s) { estado('Dibuje una estructura o escriba un SMILES.', true); return; }
     consultar('smiles', s);
+  });
+
+  // ---------------------------------------------------------------- Isómeros por fórmula
+  $('fFormula').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    if (ocupado) return;
+    const f = $('formula').value.trim();
+    if (!f) return;
+    ocupado = true; $('bFormula').disabled = true;
+    const caja = $('isomeros');
+    caja.classList.remove('oculto');
+    caja.innerHTML = '<p class="cargando">Buscando en PubChem, MassBank y NIST, y verificando RMN (puede tardar unos segundos)…</p>';
+    try {
+      const r = await fetch(`${API}?formula=${encodeURIComponent(f)}`, { headers: { Accept: 'application/json' } });
+      const j = await r.json().catch(() => ({ error: 'Respuesta no válida del servidor.' }));
+      if (!r.ok) throw new Error(j.error || `Error HTTP ${r.status}`);
+      const marca = v => v ? '<span class="si">✓</span>' : '<span class="no">—</span>';
+      const rmnMarca = (r, n) => !r ? '<span class="muted" title="no verificado">?</span>' : r[n] === 'datos' ? '<span class="si" title="lista de desplazamientos">✓</span>'
+        : r[n] === 'imagen' ? '<span class="muted small" title="solo imagen en el sitio de origen">imagen</span>' : '<span class="no">—</span>';
+      caja.innerHTML = `<h3>${esc(j.formula)}: ${j.con_espectros} compuesto(s) con espectros
+          <span class="muted small">(PubChem registra ${j.total_pubchem} con esta fórmula)</span></h3>
+        <div class="tabla-wrap"><table><thead><tr><th class="izq">Compuesto</th><th class="izq">CAS</th><th>EM (EI)</th><th>IR</th><th>RMN ¹H</th><th>RMN ¹³C</th><th></th></tr></thead><tbody>${
+          j.compuestos.map((c, i) => `<tr><td class="izq">${c.url_pubchem ? enlace(c.url_pubchem, c.nombre) : esc(c.nombre)}${c.nombre_iupac && c.nombre_iupac.toLowerCase() !== String(c.nombre).toLowerCase() ? `<br><span class="muted small">${esc(c.nombre_iupac)}</span>` : ''}</td>
+            <td class="izq">${esc(c.cas || '—')}</td><td>${c.ms ? `<span class="si">✓</span> <span class="muted small">(${c.ms.n})</span>` : marca(false)}</td>
+            <td>${c.ir ? enlace(c.ir.url, '✓') : marca(false)}</td><td>${rmnMarca(c.rmn, '1H')}</td><td>${rmnMarca(c.rmn, '13C')}</td>
+            <td><button type="button" data-i="${i}">Ver espectros</button></td></tr>`).join('')
+        }</tbody></table></div>
+        <ul class="avisos">${(j.avisos || []).map(a => `<li>${esc(a)}</li>`).join('')}</ul>`;
+      caja.querySelectorAll('button[data-i]').forEach(b => b.addEventListener('click', () => {
+        const c = j.compuestos[+b.dataset.i];
+        $('q').value = c.cas || c.nombre;
+        consultar('nombre', c.consulta);
+      }));
+    } catch (e) {
+      caja.innerHTML = `<p class="estado err">${esc(e.message)}</p>`;
+    } finally {
+      ocupado = false; $('bFormula').disabled = false;
+    }
   });
 
   async function consultar(param, valor) {
