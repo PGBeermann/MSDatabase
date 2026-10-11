@@ -14,7 +14,7 @@
   const MSDB = G.MSDB = G.MSDB || {};
   const Q = () => MSDB.quimica;
 
-  // Cada banda: [modo vibracional, min, max, intensidad, forma, nota, diagnóstica]
+  // Cada banda: [modo vibracional, min, max, intensidad, forma, nota, diagnóstica, n.º de bandas esperadas (1 por defecto)]
   const GRUPOS = [
     { id: 'acido', nombre: 'Ácido carboxílico', smarts: '[CX3](=O)[OX2H1]', bandas: [
       ['ν(O–H) del dímero con puente de H', 2500, 3300, 'f', 'muy ancha', 'Banda muy ancha que se superpone a las ν(C–H); diagnóstica de COOH.', true],
@@ -37,7 +37,7 @@
       ['δ(N–H) (amida II)', 1510, 1650, 'm', '', 'Primarias 1620–1650; secundarias 1510–1570.', false]] },
     { id: 'aldehido', nombre: 'Aldehído', smarts: '[CX3H1](=O)[#6]', bandas: [
       ['ν(C=O)', 1685, 1740, 'f', '', '1720–1740 alifático; 1685–1710 aromático o conjugado.', true],
-      ['ν(C–H) aldehídico (doblete de Fermi)', 2695, 2850, 'm', '', 'Dos bandas ≈2720 y ≈2820 cm⁻¹ (resonancia de Fermi con 2δ(C–H)).', true]] },
+      ['ν(C–H) aldehídico (doblete de Fermi)', 2695, 2850, 'm', '', 'Dos bandas ≈2720 y ≈2820 cm⁻¹ (resonancia de Fermi con 2δ(C–H)).', true, 2]] },
     { id: 'cetona', nombre: 'Cetona', smarts: '[#6][CX3](=O)[#6]', bandas: [
       ['ν(C=O)', 1680, 1725, 'f', '', '1705–1725 alifática; 1680–1700 arílica o α,β-insaturada; ciclopentanona ≈1750.', true],
       ['ν(C–C(=O)–C)', 1100, 1300, 'm', '', '', false]] },
@@ -58,7 +58,7 @@
       ['ν(C–O)', 1000, 1260, 'f', '', '1° ≈1050; 2° ≈1100; 3° ≈1150 cm⁻¹.', true],
       ['δ(O–H) en el plano', 1330, 1420, 'm', '', '', false]] },
     { id: 'amina1', nombre: 'Amina primaria', smarts: '[NX3;H2;!$(N[CX3]=[O,S,N]);!$(N=*)][#6]', bandas: [
-      ['νas y νs(N–H)', 3300, 3500, 'm', '', 'Dos bandas (asimétrica y simétrica) separadas ≈ 70–100 cm⁻¹.', true],
+      ['νas y νs(N–H)', 3300, 3500, 'm', '', 'Dos bandas (asimétrica y simétrica) separadas ≈ 70–100 cm⁻¹.', true, 2],
       ['δ(NH₂) tijereteo', 1580, 1650, 'm', '', '', true],
       ['ν(C–N)', 1020, 1340, 'm', '', '1020–1250 alifáticas; 1250–1335 aromáticas.', false],
       ['γ(N–H) aleteo', 665, 910, 'm', 'ancha', '', false]] },
@@ -81,6 +81,11 @@
       ['ν(=C–H)', 3010, 3100, 'm', '', 'Por encima de 3000 cm⁻¹, a diferencia de las C–H sp³.', false],
       ['ν(C=C)', 1620, 1680, 'v', '', 'Débil si el alqueno es casi simétrico; ≈1600–1640 si está conjugado.', true],
       ['γ(=C–H) fuera del plano', 650, 1000, 'f', '', 'Vinilo 910 y 990; trans ≈965; 1,1-disustituido ≈890; cis ≈690.', false]] },
+    { id: 'vinilo', nombre: 'Grupo vinilo (–CH=CH₂)', smarts: '[CX3H1]=[CX3H2]', bandas: [
+      ['γ(=C–H) trans del vinilo', 985, 995, 'f', '', '', true],
+      ['γ(=CH₂) aleteo del vinilo', 905, 915, 'f', '', 'Par 990/910 cm⁻¹ diagnóstico de monosustitución del alqueno.', true]] },
+    { id: 'alqueno11', nombre: 'Alqueno 1,1-disustituido (>C=CH₂)', smarts: '[CX3H0]([#6])([#6])=[CX3H2]', bandas: [
+      ['γ(=CH₂) aleteo', 885, 895, 'f', '', '', true]] },
     { id: 'aromatico', nombre: 'Anillo aromático', smarts: 'a1aaaaa1', bandas: [
       ['ν(C–H) aromático', 3000, 3100, 'd', '', '', true],
       ['ν(C=C) del anillo', 1585, 1610, 'm', '', 'Junto con 1450–1500 forman el par característico de los arenos.', true],
@@ -160,14 +165,15 @@
     }
 
     const grupos = presentes.map(({ gr, n, atomos }) => {
-      const filas = gr.bandas.map(([modo, min, max, int, forma, nota, diag]) => {
+      const filas = gr.bandas.map(([modo, min, max, int, forma, nota, diag, nb]) => {
         if (max < xmin || min > xmax) return { modo, min, max, int, forma, nota, diag, estado: 'fuera' };
         let c = buscar(min, max);
         // Una vibración débil (sobretonos, ν(C≡C)…) no se asigna a una banda intensa ya explicada por otro grupo
         if (int === 'd') c = c.filter(b => b.intensidad_relativa < 50 && !b.asignaciones.length);
-        const b = c[0];
-        if (b) b.asignaciones.push({ grupo: gr.nombre, modo });
-        return { modo, min, max, int, forma, nota, diag, estado: b ? 'observada' : 'ausente', banda: b || null };
+        const tomadas = c.slice(0, nb || 1);
+        tomadas.forEach(b => b.asignaciones.push({ grupo: gr.nombre, modo }));
+        const b = tomadas[0];
+        return { modo, min, max, int, forma, nota, diag, estado: b ? 'observada' : 'ausente', banda: b || null, bandasObs: tomadas };
       });
       const diag = filas.filter(f => f.diag && f.estado !== 'fuera');
       const ok = diag.filter(f => f.estado === 'observada').length;
@@ -221,7 +227,7 @@
         <div class="tabla-wrap"><table><thead><tr><th class="izq">Vibración</th><th>Intervalo (cm⁻¹)</th><th class="izq">Esperada</th><th class="izq">Experimental</th></tr></thead><tbody>${
           gq.filas.map(f => `<tr class="${f.estado === 'ausente' && f.diag ? 'falta' : ''}"><td class="izq">${esc(f.modo)}${f.diag ? ' <span class="muted small">(diagnóstica)</span>' : ''}${f.nota ? `<br><span class="muted small">${esc(f.nota)}</span>` : ''}</td>
             <td>${f.min}–${f.max}</td><td class="izq">${INT[f.int]}${f.forma ? ', ' + esc(f.forma) : ''}</td>
-            <td class="izq">${f.banda ? `${est.observada}: ${f.banda.numero_onda.toFixed(0)} cm⁻¹ (${f.banda.forma || ''})` : est[f.estado]}</td></tr>`).join('')
+            <td class="izq">${f.banda ? `${est.observada}: ${f.bandasObs.map(b => `${b.numero_onda.toFixed(0)} cm⁻¹ (${b.forma || ''})`).join(' y ')}` : est[f.estado]}</td></tr>`).join('')
         }</tbody></table></div></details>`).join('');
 
     const sust = r.sustitucion.map(s => `<li>Anillo bencénico ${esc(s.nombre)}: ${s.filas.map(f => `${f.min}–${f.max} cm⁻¹ → ${f.banda ? f.banda.numero_onda.toFixed(0) + ' ✓' : '✗'}`).join('; ') || 'sin bandas tabuladas'}</li>`).join('');

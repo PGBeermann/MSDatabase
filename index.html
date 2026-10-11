@@ -80,6 +80,8 @@
   .tabla-wrap tr.sel td{background:color-mix(in srgb,var(--acc) 15%,transparent)}
   .tabla-entornos tbody tr{cursor:pointer}
   details.grupo{border:1px solid var(--ln);border-radius:8px;margin:8px 0;padding:6px 10px}
+  details.grupo-conjunto{margin-top:14px;border:1px solid var(--ln);border-radius:8px;padding:8px 12px}
+  details.grupo-conjunto>summary{cursor:pointer}
   details.grupo summary{cursor:pointer;display:flex;gap:10px;align-items:center}
   .rmn-grid{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start}
   @media (max-width:760px){.ion-body,.rmn-grid{grid-template-columns:1fr}}
@@ -124,6 +126,7 @@
   <section id="res" class="panel oculto">
     <dl id="info"></dl>
     <ul id="avisos" class="avisos"></ul>
+    <details id="conjunto" class="interp grupo-conjunto" open><summary><b>Análisis conjunto EM + IR + RMN</b></summary><div id="conjuntoCuerpo"><p class="cargando">Preparando la estructura…</p></div></details>
 
     <div class="tabs" role="tablist" id="tabs">
       <button role="tab" data-t="ms">EM</button>
@@ -156,6 +159,7 @@
 <script src="js/interp-ms.js" defer></script>
 <script src="js/interp-ir.js" defer></script>
 <script src="js/interp-rmn.js" defer></script>
+<script src="js/interp-conjunto.js" defer></script>
 <script>
 (() => {
   const API = 'ms_api.php';
@@ -277,6 +281,7 @@
     });
     $('res').classList.remove('oculto');
     abrir(primera || 'ms');
+    renderConjunto();
   }
 
   document.querySelectorAll('#tabs button').forEach(b =>
@@ -336,6 +341,19 @@
     } catch (err) {
       console.error(err);
       caja.innerHTML = `<p class="nota">No se pudo interpretar este espectro: ${esc(err.message)}</p>`;
+    }
+  }
+
+  async function renderConjunto() {
+    const caja = $('conjuntoCuerpo');
+    const gen = generacion;
+    caja.innerHTML = '<p class="cargando">Correlacionando las técnicas…</p>';
+    try {
+      const ctx = await promCtx;
+      if (gen !== generacion) return;
+      caja.innerHTML = MSDB.interpConjunto.renderizar(MSDB.interpConjunto.analizar(ctx, datos));
+    } catch (err) {
+      caja.innerHTML = `<p class="nota">Análisis conjunto no disponible: ${esc(err.message)}</p>`;
     }
   }
 

@@ -28,11 +28,18 @@ sobre la estructura (molfile 2D de PubChem o SMILES dibujado en JSME):
 | **RMN ¹H** | Entornos químicamente equivalentes (simetría topológica), δ estimados (CH₃ tabulados, regla de Shoolery para CH₂/CH, incrementos Z orto/meta/para en bencenos), multiplicidad n+1, agrupación de líneas en multipletes (< 20 Hz), integración relativa, H intercambiables en D₂O, efecto del pH (carboxilatos), señales de disolventes. | Silverstein 2014; Pretsch 2009; Fulmer 2010 |
 | **RMN ¹³C** | Entornos de C, δ estimados (tablas por entorno e incrementos aromáticos ipso/orto/meta/para), tipo de C frente a la multiplicidad DEPT de NMRShiftDB, asignación de costo mínimo, disolvente. | Silverstein 2014; Pretsch 2009; Fulmer 2010 |
 
+| **Análisis conjunto** | Panel sobre las pestañas: descomposición del IDH (anillos, π aromáticos, C=O, C=C, triples), confirmación de la masa molecular por M⁺•, fragmentaciones principales, grupos confirmados por IR, número de señales de ¹³C frente a la simetría y, para cada grupo funcional, su evidencia en IR, ¹³C y ¹H. | Silverstein 2014, cap. 8; Pavia 2015 |
+
+¹³C sp³ por Grant–Paul (J. Am. Chem. Soc. 1964, 86, 2984) con correcciones de ramificación e incrementos α/β/γ de
+grupos funcionales; ¹H de CH₂/CH con incrementos aditivos sobre 1,25/1,55 ppm y corrección β. Con 25 compuestos de
+referencia (CDCl₃), el error absoluto medio es 0,07 ppm en ¹H y 0,8 ppm en ¹³C; parte de esos compuestos se usó para
+ajustar los incrementos, de modo que con compuestos nuevos el error esperado es mayor.
+
 Las estimaciones son aditivas y orientativas (±0,2–0,4 ppm en ¹H, ±3–8 ppm en ¹³C); su propósito es
 docente: proponer y justificar asignaciones, no sustituir el análisis del espectroscopista.
 
-Pruebas: `npm test` (31 comprobaciones con ácido benzoico, acetofenona, acetato de etilo, etanol y
-1‑bromobutano).
+Pruebas: `npm test` (62 comprobaciones: EM, IR de 12 familias funcionales, RMN, exactitud de δ con 25
+compuestos y análisis conjunto).
 
 | Técnica | Fuente | Acceso | Datos que se devuelven |
 |---|---|---|---|

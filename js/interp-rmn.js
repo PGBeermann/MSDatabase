@@ -45,42 +45,101 @@
 
   // ---------------------------------------------------------------- clasificación de sustituyentes
   /** Sustituyente j visto desde el carbono sp³ c: { s: σ de Shoolery, me: δ(CH₃–X), et: etiqueta, fuerza } */
+  /**
+   * Sustituyente j visto desde el carbono sp³ c:
+   *   s  = constante de Shoolery (referencia),
+   *   z  = incremento ¹H para CH₂/CH (δ = 1,25 o 1,55 + Σz; los alquilos valen 0),
+   *   me = δ ¹H de CH₃–X, k13 = clave de incrementos ¹³C α/β/γ, et = etiqueta.
+   * Los z se ajustaron a δ de compuestos de referencia (Silverstein 2014; Pretsch 2009).
+   */
   function sustituyente(g, c, j) {
     const a = g.atoms[j];
     const tc = Q().tipoCarbonilo;
+    const r = (s, z, me, et, k13) => ({ s, z, me, et, k13 });
     if (a.el === 'C') {
-      if (a.aromatic) return { s: 1.85, me: 2.35, et: 'arilo' };
+      if (a.aromatic) return r(1.85, 1.45, 2.35, 'arilo', 'Ph');
       const t = tc(g, j);
       const arilCO = a.nbrs.some(n => n.atom !== c && g.atoms[n.atom].aromatic);
-      if (t === 'cetona' || t === 'aldehido') return { s: arilCO ? 1.85 : 1.70, me: arilCO ? 2.58 : 2.12, et: arilCO ? 'C(=O)Ar' : 'C=O (cetona/aldehído)' };
-      if (t === 'acido' || t === 'ester' || t === 'anhidrido') return { s: 1.55, me: 2.05, et: 'COOR/COOH' };
-      if (t === 'amida') return { s: 1.59, me: 2.00, et: 'CONR₂' };
-      if (t === 'haluro_acilo') return { s: 1.75, me: 2.66, et: 'COCl' };
-      if (g.tripleBondPartner(j, 'N') != null) return { s: 1.70, me: 2.00, et: 'C≡N' };
-      if (g.tripleBondPartner(j, 'C') != null) return { s: 1.44, me: 1.80, et: 'C≡C' };
-      if (g.doubleBondPartner(j, 'C') != null) return { s: 1.32, me: 1.70, et: 'C=C' };
-      if (a.nbrs.filter(n => g.atoms[n.atom].el === 'F').length >= 2) return { s: 1.14, me: 1.20, et: 'CF₃' };
-      return { s: 0.47, me: 0.90, et: 'alquilo' };
+      if (t === 'aldehido') return r(1.70, 1.20, 2.20, 'CHO', 'CHO');
+      if (t === 'cetona') return arilCO ? r(1.85, 1.70, 2.58, 'C(=O)Ar', 'COR') : r(1.70, 1.20, 2.12, 'C=O (cetona)', 'COR');
+      if (t === 'acido') return r(1.55, 1.10, 2.08, 'COOH', 'COOH');
+      if (t === 'ester' || t === 'anhidrido') return r(1.55, 1.05, 2.05, 'COOR', 'COOR');
+      if (t === 'amida') return r(1.59, 1.00, 2.00, 'CONR₂', 'COOR');
+      if (t === 'haluro_acilo') return r(1.75, 1.65, 2.66, 'COCl', 'COR');
+      if (g.tripleBondPartner(j, 'N') != null) return r(1.70, 1.10, 2.00, 'C≡N', 'CN');
+      if (g.tripleBondPartner(j, 'C') != null) return r(1.44, 0.90, 1.80, 'C≡C', 'CCH');
+      if (g.doubleBondPartner(j, 'C') != null) return r(1.32, 0.75, 1.70, 'C=C', 'CHCH2');
+      if (a.nbrs.filter(n => g.atoms[n.atom].el === 'F').length >= 2) return r(1.14, 0.80, 1.20, 'CF₃', null);
+      return r(0.47, 0, 0.90, 'alquilo', null);
     }
     if (a.el === 'O') {
-      if (a.h > 0) return { s: 2.56, me: 3.40, et: 'OH' };
+      if (a.h > 0) return r(2.56, 2.30, 3.40, 'OH', 'OH');
       const o = a.nbrs.map(n => n.atom).find(k => k !== c);
-      if (o != null && g.atoms[o].aromatic) return { s: 3.23, me: 3.80, et: 'O–arilo' };
+      if (o != null && g.atoms[o].aromatic) return r(3.23, 2.75, 3.80, 'O–arilo', 'OR');
       if (o != null && tc(g, o)) {
         const aril = g.atoms[o].nbrs.some(n => g.atoms[n.atom].aromatic);
-        return { s: 3.13, me: aril ? 3.90 : 3.68, et: aril ? 'O–C(=O)Ar' : 'O–C(=O)R' };
+        return r(3.13, aril ? 3.10 : 2.85, aril ? 3.90 : 3.68, aril ? 'O–C(=O)Ar' : 'O–C(=O)R', 'OCOR');
       }
-      return { s: 2.36, me: 3.30, et: 'OR' };
+      return r(2.36, 2.20, 3.30, 'OR', 'OR');
     }
     if (a.el === 'N') {
-      if (a.nbrs.filter(n => g.atoms[n.atom].el === 'O').length >= 2) return { s: 3.80, me: 4.30, et: 'NO₂' };
-      if (a.nbrs.some(n => n.atom !== c && tc(g, n.atom))) return { s: 2.27, me: 2.90, et: 'N–C(=O) (amida)' };
-      if (a.aromatic || a.nbrs.some(n => g.atoms[n.atom].aromatic)) return { s: 1.90, me: 2.85, et: 'N–arilo' };
-      return { s: 1.57, me: 2.30, et: 'NR₂' };
+      if (a.nbrs.filter(n => g.atoms[n.atom].el === 'O').length >= 2) return r(3.80, 3.10, 4.30, 'NO₂', 'NO2');
+      if (a.nbrs.some(n => n.atom !== c && tc(g, n.atom))) return r(2.27, 2.00, 2.90, 'N–C(=O) (amida)', 'NHCOR');
+      if (a.aromatic || a.nbrs.some(n => g.atoms[n.atom].aromatic)) return r(1.90, 1.85, 2.85, 'N–arilo', 'NR2');
+      return r(1.57, 1.25, 2.30, 'NR₂', a.h ? 'NH2' : 'NR2');
     }
-    const tabla = { S: [1.64, 2.10, 'SR'], Cl: [2.53, 3.05, 'Cl'], Br: [2.33, 2.68, 'Br'], I: [1.82, 2.16, 'I'], F: [3.85, 4.26, 'F'], P: [1.0, 1.5, 'P'], Si: [0.0, 0.0, 'Si'] };
-    const t = tabla[a.el] || [1.0, 1.5, a.el];
-    return { s: t[0], me: t[1], et: t[2] };
+    const tabla = { S: [1.64, 1.30, 2.10, 'SR', 'SR'], Cl: [2.53, 2.28, 3.05, 'Cl', 'Cl'], Br: [2.33, 2.15, 2.68, 'Br', 'Br'],
+      I: [1.82, 1.95, 2.16, 'I', 'I'], F: [3.85, 3.20, 4.26, 'F', 'F'], P: [1.0, 0.6, 1.5, 'P', null], Si: [0, -1.2, 0, 'Si', null] };
+    const t = tabla[a.el] || [1.0, 0.8, 1.5, a.el, null];
+    return r(t[0], t[1], t[2], t[3], t[4]);
+  }
+
+  // Incrementos ¹³C de sustituyentes en alcanos [α terminal, α interno, β, γ] (Silverstein et al. 2014, tabla 4.x;
+  // base de Grant y Paul, J. Am. Chem. Soc. 1964, 86, 2984: δ = −2,3 + 9,1·nα + 9,4·nβ − 2,5·nγ)
+  const INC13 = {
+    OH: [48, 41, 10, -5], OR: [58, 51, 8, -4], OCOR: [51, 45, 6, -3], COOH: [21, 16, 3, -2], COOR: [20, 17, 3, -2],
+    COR: [30, 24, 1, -2], CHO: [31, 31, 0, -2], NH2: [29, 24, 11, -5], NR2: [42, 42, 6, -3], NHCOR: [27, 22, 8, -4],
+    Cl: [31, 32, 11, -4], Br: [20, 28, 11, -3], I: [-6, 7, 11, -1], F: [68, 63, 9, -4], CN: [4, 1, 3, -3],
+    Ph: [23, 17, 9, -2], CHCH2: [20, 20, 6, -0.5], CCH: [4.5, 4.5, 5.5, -3.5], NO2: [63, 57, 4, -1], SR: [21, 20, 7, -3]
+  };
+
+  /** δ ¹³C de un carbono sp³ por Grant–Paul + incrementos α/β/γ de grupos funcionales. */
+  function grantPaul(g, i) {
+    const sp3C = k => g.atoms[k].el === 'C' && g.isSp3(k) && Q().tipoCarbonilo(g, k) == null;
+    let d = -2.3;
+    const det = [];
+    // BFS por la cadena sp³ hasta distancia 3
+    const dist = new Map([[i, 0]]);
+    const cola = [i];
+    while (cola.length) {
+      const u = cola.shift();
+      const du = dist.get(u);
+      for (const n of g.atoms[u].nbrs) {
+        const v = n.atom;
+        if (dist.has(v)) continue;
+        if (sp3C(v)) {
+          if (du + 1 <= 3) { dist.set(v, du + 1); cola.push(v); d += [0, 9.1, 9.4, -2.5][du + 1]; }
+        } else if (du <= 2) {
+          // grupo funcional unido a un carbono de la cadena a distancia du → posición α (du=0), β (1), γ (2)
+          const sub = sustituyente(g, u, v);
+          const inc = sub.k13 && INC13[sub.k13];
+          if (inc) {
+            const internoU = g.atoms[u].nbrs.filter(x => sp3C(x.atom)).length >= 2;
+            const val = du === 0 ? inc[internoU ? 1 : 0] : du === 1 ? inc[2] : inc[3];
+            d += val;
+            det.push(`${sub.k13} ${['α', 'β', 'γ'][du]} ${val > 0 ? '+' : ''}${val}`);
+          }
+        }
+      }
+    }
+    // Correcciones de Grant–Paul por ramificación: grado (n.º de C vecinos) del átomo y de cada vecino
+    const gradoC = k => g.atoms[k].nbrs.filter(x => g.atoms[x.atom].el === 'C').length;
+    const CORR = { '1,3': -1.1, '1,4': -3.4, '2,3': -2.5, '2,4': -7.2, '3,2': -3.7, '3,3': -9.5, '3,4': -15.0, '4,1': -1.5, '4,2': -8.4, '4,3': -15.0, '4,4': -25.0 };
+    const gi = gradoC(i);
+    let ram = 0;
+    g.atoms[i].nbrs.forEach(n => { if (sp3C(n.atom)) ram += CORR[gi + ',' + gradoC(n.atom)] || 0; });
+    if (ram) { d += ram; det.push(`ramificación ${ram.toFixed(1)}`); }
+    return { d, det: 'Grant–Paul' + (det.length ? ': ' + det.join(', ') : '') };
   }
 
   /** Clave de incremento aromático del sustituyente j unido al carbono de anillo r. */
@@ -173,7 +232,7 @@
     const par = g.doubleBondPartner(i, 'C');
     if (par != null) {
       let d = 5.3, tipo = 'H vinílico';
-      if (a.h === 2) { d = 5.0; tipo = '=CH₂ terminal'; }
+      if (a.h === 2) { const cj = g.atoms[par].nbrs.some(n => n.atom !== i && (g.atoms[n.atom].aromatic || Q().tipoCarbonilo(g, n.atom))); d = cj ? 5.5 : 4.95; tipo = cj ? '=CH₂ terminal conjugado (H cis/trans no equivalentes)' : '=CH₂ terminal'; }
       if (nb.some(k => k !== par && tc(g, k))) { d = 6.0; tipo = 'H vinílico α a C=O'; }
       if (g.atoms[par].nbrs.some(n => n.atom !== i && tc(g, n.atom))) { d = 6.9; tipo = 'H vinílico β a C=O (conjugado)'; }
       if (nb.some(k => k !== par && g.atoms[k].aromatic)) { d = Math.max(d, 6.6); tipo += ', estirénico'; }
@@ -193,12 +252,22 @@
       }
       return { d, tol: 0.25, tipo: `CH₃–${s.et}` };
     }
-    if (a.h === 2) {
-      const d = 0.23 + sust.reduce((x, s) => x + s.s, 0);
-      return { d, tol: 0.35, tipo: `CH₂ (${sust.map(s => s.et).join(', ')})`, det: `Shoolery: 0,23 + ${sust.map(s => s.s.toFixed(2)).join(' + ')}` };
-    }
-    const d = 0.23 + sust.slice(0, 2).reduce((x, s) => x + s.s, 0) + 0.5;
-    return { d, tol: 0.4, tipo: `CH (${sust.map(s => s.et).join(', ')})` };
+    // CH₂ y CH: δ = 1,25 (CH₂) o 1,55 (CH) + Σz de los sustituyentes + corrección β (+0,30/+0,35 por un
+    // grupo electroatrayente en el carbono vecino)
+    let beta = 0;
+    nb.forEach(k => {
+      if (g.atoms[k].el !== 'C' || !g.isSp3(k)) return;
+      const zs = g.atoms[k].nbrs.map(n => n.atom).filter(x => x !== i).map(x => sustituyente(g, k, x).z);
+      const mx = zs.length ? Math.max(...zs) : 0;
+      beta += mx >= 2 ? 0.35 : mx >= 1 ? 0.3 : 0;
+    });
+    beta = Math.min(beta, 0.5);
+    const base = a.h === 2 ? 1.25 : 1.55;
+    const zt = sust.reduce((x, s) => x + s.z, 0);
+    const d = base + zt + beta;
+    const etq = sust.map(s => s.et).join(', ');
+    return { d, tol: a.h === 2 ? 0.3 : 0.35, tipo: `${a.h === 2 ? 'CH₂' : 'CH'} (${etq})`,
+      det: `${base.toFixed(2).replace('.', ',')} + Σz ${zt.toFixed(2).replace('.', ',')}${beta ? ` + β ${beta.toFixed(2).replace('.', ',')}` : ''}` };
   }
 
   // ---------------------------------------------------------------- estimación ¹³C
@@ -206,16 +275,22 @@
     const a = g.atoms[i];
     const tc = Q().tipoCarbonilo;
     const nb = a.nbrs.map(n => n.atom);
-    const conj = nb.some(k => g.atoms[k].aromatic || (g.doubleBondPartner(k, 'C') != null && k !== g.doubleBondPartner(i, 'C')));
+    // conjugado: C vecino aromático o con doble enlace C=C (no el propio O carbonílico)
+    const conj = nb.some(k => g.atoms[k].el === 'C' && (g.atoms[k].aromatic || (g.doubleBondPartner(k, 'C') != null && g.doubleBondPartner(k, 'C') !== i)));
     const t = tc(g, i);
     if (t) {
       const T = { acido: conj ? [172, 5] : [180, 5], ester: conj ? [167, 4] : [172, 4], amida: [170, 5], anhidrido: [167, 5],
         haluro_acilo: [170, 5], cetona: conj ? [198, 6] : [209, 7], aldehido: conj ? [192, 5] : [201, 5] };
       const [d, tol] = T[t];
-      return { d, tol, tipo: 'C=O de ' + t.replace('_', ' ') };
+      const NOM = { acido: 'ácido', ester: 'éster', amida: 'amida', anhidrido: 'anhídrido', haluro_acilo: 'haluro de acilo', cetona: 'cetona', aldehido: 'aldehído' };
+      return { d, tol, tipo: 'C=O de ' + NOM[t] };
     }
     if (g.tripleBondPartner(i, 'N') != null) return { d: 119, tol: 5, tipo: 'C≡N' };
-    if (g.tripleBondPartner(i, 'C') != null) return { d: a.h ? 69 : 84, tol: 8, tipo: a.h ? '≡CH' : '≡C–' };
+    if (g.tripleBondPartner(i, 'C') != null) {
+      const p = g.tripleBondPartner(i, 'C');
+      const arilP = g.atoms[p].nbrs.some(n => g.atoms[n.atom].aromatic);
+      return a.h ? { d: arilP ? 77.3 : 68.5, tol: 4, tipo: '≡CH' } : { d: 84, tol: 5, tipo: '≡C–' };
+    }
     if (a.aromatic) {
       const inc = incrementosAnillo(g, i);
       if (inc) {
@@ -233,35 +308,11 @@
       return { d: a.h === 2 ? 115 : a.h === 1 ? 133 : 140, tol: 10, tipo: a.h === 2 ? '=CH₂' : a.h === 1 ? '=CH–' : '=C<' };
     }
     if (g.doubleBondPartner(i, 'N') != null) return { d: 160, tol: 10, tipo: 'C=N' };
-    // sp³
+    // sp³: Grant–Paul con incrementos de grupos funcionales
     const tipoH = ['C', 'CH', 'CH₂', 'CH₃'][a.h] || 'CH₃';
-    const het = nb.map(k => g.atoms[k]);
-    const O = nb.find(k => g.atoms[k].el === 'O');
-    if (O != null) {
-      const s = sustituyente(g, i, O);
-      const tabla = s.et.startsWith('O–C(=O)') ? [52, 61, 70, 80] : s.et === 'OH' ? [50, 62, 68, 72] : s.et === 'O–arilo' ? [55.5, 64, 72, 78] : [58, 70, 75, 78];
-      return { d: tabla[3 - Math.min(a.h, 3)], tol: 5, tipo: `${tipoH}–${s.et}` };
-    }
-    const N = nb.find(k => g.atoms[k].el === 'N');
-    if (N != null) {
-      const s = sustituyente(g, i, N);
-      if (s.et === 'NO₂') return { d: 75, tol: 6, tipo: `${tipoH}–NO₂` };
-      if (s.et.startsWith('N–C(=O)')) return { d: a.h === 3 ? 30 : 41, tol: 7, tipo: `${tipoH}–N (amida)` };
-      return { d: [56, 52, 46, 41][Math.min(a.h, 3)], tol: 8, tipo: `${tipoH}–N` };
-    }
-    const X = het.find(x => ['F', 'Cl', 'Br', 'I'].includes(x.el));
-    if (X) return { d: { F: 83, Cl: 45, Br: 33, I: 7 }[X.el], tol: 8, tipo: `${tipoH}–${X.el}` };
-    const subs = nb.map(k => sustituyente(g, i, k));
-    if (subs.some(s => s.et.startsWith('C=O') || s.et === 'C(=O)Ar' || s.et === 'COOR/COOH' || s.et === 'CONR₂' || s.et === 'COCl')) {
-      const ac = subs.some(s => s.et === 'COOR/COOH' || s.et === 'CONR₂');
-      return { d: a.h === 3 ? (ac ? 21 : 30) : a.h === 2 ? 36 : 43, tol: a.h === 3 ? 3 : 7, tipo: `${tipoH} α a C=O` };
-    }
-    if (subs.some(s => s.et === 'C≡N')) return { d: a.h === 3 ? 3 : 17, tol: 7, tipo: `${tipoH}–C≡N` };
-    if (subs.some(s => s.et === 'arilo')) return { d: a.h === 3 ? 21 : a.h === 2 ? 36 : 43, tol: a.h === 3 ? 2.5 : 8, tipo: `${tipoH} bencílico` };
-    if (subs.some(s => s.et === 'C=C' || s.et === 'C≡C')) return { d: a.h === 3 ? 18 : 32, tol: 7, tipo: `${tipoH} alílico/propargílico` };
-    const ramif = nb.length;
-    if (a.h === 3) return { d: g.atoms[nb[0]] && g.atoms[nb[0]].nbrs.length >= 3 ? 22 : 14, tol: 6, tipo: 'CH₃ alquílico' };
-    return { d: a.h === 2 ? 30 : a.h === 1 ? 35 : 34, tol: 9, tipo: `${tipoH} alquílico${ramif >= 3 ? ' (ramificación)' : ''}` };
+    const gp = grantPaul(g, i);
+    const sust = nb.map(k => sustituyente(g, i, k)).filter(x => x.et !== 'alquilo');
+    return { d: gp.d, tol: 5, tipo: `${tipoH}${sust.length ? '–' + sust.map(x => x.et).join(', ') : ' alquílico'}`, det: gp.det };
   }
 
   // ---------------------------------------------------------------- multiplicidad
