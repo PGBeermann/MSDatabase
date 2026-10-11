@@ -13,9 +13,26 @@ pestañas EM / IR / RMN ¹H / RMN ¹³C.
   rompen la URL) y continúa con el InChIKey/CAS/InChI obtenidos, igual que en la búsqueda por nombre.
 - Solo se encuentran espectros de compuestos **registrados en PubChem**; una estructura nueva devuelve 404.
   Se rechazan SMILES con varios fragmentos (`.`).
-- El Dockerfile descarga JSME 2024.4.29 de npm, verifica su SHA-1 y lo sirve en `/jsme/`. Sin Docker,
-  copie el contenido del paquete npm `jsme-editor` a una carpeta `jsme/` junto a `index.html`; si no
-  existe, la página lo carga desde jsDelivr.
+- JSME 2024.4.29 se instala con npm durante la construcción y se sirve en `/jsme/`; si falta, la página
+  lo carga desde jsDelivr.
+
+## Interpretación de los espectros (en el navegador)
+
+Debajo de cada espectro aparece su interpretación, calculada en el navegador con **RDKit.js 2026.3.6**
+sobre la estructura (molfile 2D de PubChem o SMILES dibujado en JSME):
+
+| Técnica | Qué se obtiene | Fundamento |
+|---|---|---|
+| **EM** | Cada pico experimental intenso (≥ 5 %) se asocia con el ion de igual m/z generado por el **motor mecanístico de PGBeermann/masas** (copiado sin cambios en `vendor/eims-engine`, MIT): fórmula, tipo OE⁺•/EE⁺, ruta con flechas de 1 y 2 e⁻, ion y neutro dibujados. Los picos que el motor no explica se contrastan con tablas de pérdidas neutras desde M⁺• e iones característicos. Además: ion molecular, regla del N, IDH, n(C) por M+1, patrones de Cl/Br/S y coseno experimental vs. predicho. | McLafferty & Tureček 1993; Gross 2017; reglas del Predictor EI‑MS |
+| **IR** | Grupos funcionales de la estructura (≈ 27 patrones SMARTS) con sus bandas diagnósticas: observada / no observada / fuera del intervalo; patrón de sustitución del benceno (γ C–H); asignación por región de las bandas restantes; ausencias significativas (sin C=O, sin O–H/N–H, sin C≡N/C≡C). Cada banda lleva su forma (aguda/ancha) por la anchura a media altura. | Silverstein 2014; Pavia 2015; Socrates 2001 |
+| **RMN ¹H** | Entornos químicamente equivalentes (simetría topológica), δ estimados (CH₃ tabulados, regla de Shoolery para CH₂/CH, incrementos Z orto/meta/para en bencenos), multiplicidad n+1, agrupación de líneas en multipletes (< 20 Hz), integración relativa, H intercambiables en D₂O, efecto del pH (carboxilatos), señales de disolventes. | Silverstein 2014; Pretsch 2009; Fulmer 2010 |
+| **RMN ¹³C** | Entornos de C, δ estimados (tablas por entorno e incrementos aromáticos ipso/orto/meta/para), tipo de C frente a la multiplicidad DEPT de NMRShiftDB, asignación de costo mínimo, disolvente. | Silverstein 2014; Pretsch 2009; Fulmer 2010 |
+
+Las estimaciones son aditivas y orientativas (±0,2–0,4 ppm en ¹H, ±3–8 ppm en ¹³C); su propósito es
+docente: proponer y justificar asignaciones, no sustituir el análisis del espectroscopista.
+
+Pruebas: `npm test` (31 comprobaciones con ácido benzoico, acetofenona, acetato de etilo, etanol y
+1‑bromobutano).
 
 | Técnica | Fuente | Acceso | Datos que se devuelven |
 |---|---|---|---|
@@ -48,7 +65,7 @@ aparece en `avisos`.
        curl "https://su-subdominio/ms_api.php?nombre=benzoic%20acid&max=1"
        curl "https://su-subdominio/ms_api.php?nombre=65-85-0&tipos=ir"
 
-El VPS debe tener salida HTTPS hacia `massbank.eu`, `pubchem.ncbi.nlm.nih.gov`,
+La primera construcción tarda unos minutos (descarga de RDKit.js, ≈ 7 MB de WebAssembly). El VPS debe tener salida HTTPS hacia `massbank.eu`, `pubchem.ncbi.nlm.nih.gov`,
 `webbook.nist.gov` y `nmrshiftdb.nmr.uni-koeln.de`. Compruébelo desde el VPS:
 
     for h in massbank.eu pubchem.ncbi.nlm.nih.gov webbook.nist.gov nmrshiftdb.nmr.uni-koeln.de; do
@@ -57,7 +74,10 @@ El VPS debe tener salida HTTPS hacia `massbank.eu`, `pubchem.ncbi.nlm.nih.gov`,
 ## Instalación alternativa sin Docker (Apache o Nginx + PHP-FPM)
 
 - PHP ≥ 7.4 con `curl`, `mbstring` y `dom`: `apt install php-curl php-mbstring php-xml` y reinicie PHP-FPM/Apache.
-- Copie `index.html` y `ms_api.php` a la carpeta pública (y, opcionalmente, JSME en `jsme/`).
+- Construya los recursos del navegador (Node ≥ 18): `npm ci && npm run build` → carpeta `build/`
+  (`js/eims-engine.js`, `rdkit/`, `jsme/`).
+- Copie a la carpeta pública: el contenido de `build/`, `index.html`, `ms_api.php` y la carpeta `js/`.
+- Sirva los `.wasm` como `application/wasm` (Apache: `AddType application/wasm .wasm`).
 - Cree la caché **fuera** de la raíz web y dele permisos:
 
       mkdir -p /var/www/msdatabase-cache && chown www-data: /var/www/msdatabase-cache && chmod 750 /var/www/msdatabase-cache
@@ -73,13 +93,13 @@ El VPS debe tener salida HTTPS hacia `massbank.eu`, `pubchem.ncbi.nlm.nih.gov`,
 
 ## Respuesta (200)
 
-    consulta, modo (nombre | smiles), tipos, compuesto {nombre, nombre_iupac, formula, masa_monoisotopica, inchikey, inchi, cas, pubchem_cid},
+    consulta, modo (nombre | smiles), tipos, compuesto {nombre, nombre_iupac, formula, masa_monoisotopica, inchikey, inchi, cas, pubchem_cid, molfile, smiles},
     devueltos {ms, ir, rmn_1H, rmn_13C},
     espectros [ {accession, titulo, instrumento, tipo_instrumento, energia_ionizacion, licencia, url,
                  num_picos, pico_base_mz, picos [ {mz, intensidad, intensidad_relativa} ] } ],
     ir        [ {id, titulo, estado, tecnica, instrumento, origen, propietario, url, url_jcamp, rango_cm1,
                  y_unidad, num_puntos_original,
-                 bandas [ {numero_onda, intensidad_relativa, clase: f|m|d} ],
+                 bandas [ {numero_onda, intensidad_relativa, clase: f|m|d, ancho, forma} ],
                  curva {x: [cm⁻¹], y: [%T o A]} } ],
     rmn { "1H":  [ {id, nucleo, frecuencia, disolvente, ph, temperatura, instrumento, fuente, licencia, url,
                     num_picos, picos [ {ppm, intensidad, intensidad_relativa, multiplicidad?, atomos?} ] } ],

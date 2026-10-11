@@ -1,0 +1,21 @@
+{
+  "name": "msdatabase",
+  "version": "4.0.0",
+  "description": "Espectros experimentales EM, IR y RMN con interpretación (mecanismos EI, grupos funcionales, asignación RMN)",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test/interpretacion.test.mjs"
+  },
+  "dependencies": {
+    "@rdkit/rdkit": "2026.3.6",
+    "jsme-editor": "2024.4.29"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

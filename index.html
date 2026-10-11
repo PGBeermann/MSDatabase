@@ -48,6 +48,41 @@
   .avisos{font-size:.85rem;color:var(--mut);margin:10px 0 0;padding-left:18px}
   a{color:var(--acc)}
   .oculto{display:none}
+  /* --- interpretación (tarjetas de mecanismos adaptadas de PGBeermann/masas, MIT) --- */
+  :root{--oe:#7c3aed;--ee:#0f766e;--ok:#15803d;--warn:#b45309;--surface2:#eef1f5}
+  @media (prefers-color-scheme: dark){:root{--oe:#b794f6;--ee:#5eead4;--ok:#4ade80;--warn:#fbbf24;--surface2:#232831}}
+  .interp{margin-top:22px;border-top:2px solid var(--ln);padding-top:6px}
+  .interp h3{font-size:1.15rem;margin:12px 0 6px} .interp .sub-h{font-size:1rem;margin:18px 0 6px}
+  .interp-notas{margin:6px 0 10px;padding-left:20px;font-size:.92rem} .interp-notas li{margin:3px 0}
+  .interp .cargando{color:var(--mut);font-style:italic}
+  .interp .mol{background:#fff;border:1px solid var(--ln);border-radius:8px;overflow:hidden}
+  .interp .mol svg{display:block;width:100%;height:auto}
+  .expl{display:grid;gap:12px}
+  .ion{border:1px solid var(--ln);border-radius:10px;overflow:hidden}
+  .ion>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 12px;background:var(--surface2)}
+  .ion>summary::-webkit-details-marker{display:none}
+  .ion .mz{font:600 17px ui-monospace,Consolas,monospace;min-width:70px}
+  .ion .bar{flex:0 0 110px;height:8px;background:var(--ln);border-radius:4px;overflow:hidden}
+  .ion .bar i{display:block;height:100%;background:var(--bar)}
+  .ion .title{flex:1 1 240px;font-weight:500}
+  .badge{font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+  .badge.oe{color:var(--oe)} .badge.ee{color:var(--ee)} .badge.ok{color:var(--ok)} .badge.warn{color:var(--warn)} .badge.bad{color:var(--err)}
+  .ion-body{padding:12px;display:grid;grid-template-columns:240px 1fr;gap:14px}
+  .step{border-left:3px solid var(--acc);padding:4px 0 4px 12px;margin-bottom:12px}
+  .step h4{margin:0 0 6px;font-size:14px} .step ol{margin:6px 0 0;padding-left:20px;font-size:.9rem}
+  .eq{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}
+  .eq .mol{width:190px} .eq .mol.small{width:140px} .eq .mol.mech{width:360px;max-width:100%}
+  .eq .op{font-size:20px;color:var(--mut)} .eq figure{margin:0}
+  .eq figcaption{font:12px ui-monospace,Consolas,monospace;color:#5b6474;text-align:center;padding:4px}
+  .mono{font-family:ui-monospace,Consolas,monospace} .muted{color:var(--mut)} .small{font-size:.82rem}
+  .alt{font-size:.82rem;color:var(--mut);margin-top:6px}
+  .tabla-wrap tr.t-sin_explicar td,.tabla-wrap tr.falta td{background:color-mix(in srgb,var(--warn) 10%,transparent)}
+  .tabla-wrap tr.sel td{background:color-mix(in srgb,var(--acc) 15%,transparent)}
+  .tabla-entornos tbody tr{cursor:pointer}
+  details.grupo{border:1px solid var(--ln);border-radius:8px;margin:8px 0;padding:6px 10px}
+  details.grupo summary{cursor:pointer;display:flex;gap:10px;align-items:center}
+  .rmn-grid{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start}
+  @media (max-width:760px){.ion-body,.rmn-grid{grid-template-columns:1fr}}
   details.panel summary{cursor:pointer;font-weight:600}
   .jsme-caja{min-height:340px;margin-top:12px;border:1px solid var(--ln);border-radius:6px;background:#fff;overflow:hidden}
   .jsme-caja .nota{padding:12px;margin:0;color:#5b6474}
@@ -108,6 +143,7 @@
       <svg id="graf" viewBox="0 0 900 300" role="img" aria-label="Espectro"></svg>
       <div class="tabla-wrap"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
       <p class="nota" id="notaVista"></p>
+      <section id="interp" class="interp" aria-live="polite"></section>
     </div>
     <p class="vacio oculto" id="vacio">No hay espectros de este tipo para el compuesto.</p>
     <p class="nota" id="enlaces"></p>
@@ -115,6 +151,11 @@
   </section>
 </main>
 
+<script src="js/eims-engine.js" defer></script>
+<script src="js/quimica.js" defer></script>
+<script src="js/interp-ms.js" defer></script>
+<script src="js/interp-ir.js" defer></script>
+<script src="js/interp-rmn.js" defer></script>
 <script>
 (() => {
   const API = 'ms_api.php';
@@ -165,6 +206,7 @@
       const j = await r.json().catch(() => ({ error: 'Respuesta no válida del servidor.' }));
       if (!r.ok) throw new Error(j.error || `Error HTTP ${r.status}`);
       datos = j;
+      prepararCtx();
       mostrar();
       const d = j.devueltos;
       estado(`EM: ${d.ms} · IR: ${d.ir} · RMN ¹H: ${d.rmn_1H} · RMN ¹³C: ${d.rmn_13C}`);
@@ -255,6 +297,63 @@
   function espectro(i) {
     const e = VISTAS[pestana].lista(datos)[i];
     if (pestana === 'ms') verMS(e); else if (pestana === 'ir') verIR(e); else verRMN(e);
+    interpretar(pestana, e);
+  }
+
+  // ---------------------------------------------------------------- Interpretación (RDKit.js en el navegador)
+  let ctxMol = null, promCtx = null, generacion = 0;
+  const cacheInterp = new Map();
+  function prepararCtx() {
+    generacion++;
+    cacheInterp.clear();
+    if (ctxMol && window.MSDB) MSDB.quimica.liberar(ctxMol);
+    ctxMol = null;
+    const c = datos.compuesto || {};
+    promCtx = (window.MSDB && (c.molfile || c.smiles))
+      ? MSDB.quimica.prepararMolecula(c).then(x => (ctxMol = x))
+      : Promise.reject(new Error('No hay estructura disponible para interpretar el espectro.'));
+    promCtx.catch(() => {});
+  }
+
+  async function interpretar(t, e) {
+    const caja = $('interp');
+    const gen = generacion;
+    caja.innerHTML = '<p class="cargando">Interpretando el espectro (la primera vez se carga RDKit.js, ≈ 7 MB)…</p>';
+    let ctx;
+    try { ctx = await promCtx; } catch (err) { caja.innerHTML = `<p class="nota">Interpretación no disponible: ${esc(err.message)}</p>`; return; }
+    if (gen !== generacion || VISTAS[pestana].lista(datos)[+$('sel').value] !== e) return;   // el usuario cambió de vista
+    try {
+      const clave = t + '|' + (e.accession || e.id);
+      let html = cacheInterp.get(clave);
+      if (!html) {
+        if (t === 'ms') html = MSDB.interpMS.renderizar(MSDB.interpMS.interpretar(ctx, e));
+        else if (t === 'ir') html = MSDB.interpIR.renderizar(MSDB.interpIR.interpretar(ctx, e));
+        else html = MSDB.interpRMN.renderizar(MSDB.interpRMN.interpretar(ctx, e), MSDB.quimica.svgMolecula(ctx, []));
+        cacheInterp.set(clave, html);
+      }
+      caja.innerHTML = html;
+      activarInterp(ctx);
+    } catch (err) {
+      console.error(err);
+      caja.innerHTML = `<p class="nota">No se pudo interpretar este espectro: ${esc(err.message)}</p>`;
+    }
+  }
+
+  function activarInterp(ctx) {
+    const caja = $('interp');
+    // EM: enlace de la tabla → tarjeta del mecanismo
+    caja.querySelectorAll('a[data-ion]').forEach(a => a.addEventListener('click', ev => {
+      ev.preventDefault();
+      const d = caja.querySelector(`.ion[data-mz="${a.dataset.ion}"]`);
+      if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    }));
+    // RMN: fila de entorno → resaltar átomos en la estructura
+    caja.querySelectorAll('.tabla-entornos tbody tr').forEach(tr => tr.addEventListener('click', () => {
+      caja.querySelectorAll('.tabla-entornos tr.sel').forEach(x => x.classList.remove('sel'));
+      tr.classList.add('sel');
+      const svg = MSDB.quimica.svgMolecula(ctx, tr.dataset.atomos.split(',').map(Number));
+      const m = caja.querySelector('.rmn-mol'); if (m) m.innerHTML = svg;
+    }));
   }
 
   // ---------------------------------------------------------------- EM
