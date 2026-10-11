@@ -5,6 +5,25 @@
 `index.html` — interfaz de consulta (una consulta a la vez), con editor de estructuras JSME y
 pestañas EM / IR / RMN ¹H / RMN ¹³C.
 
+`GET ms_api.php?formula=C7H16O` → JSON (isómeros de la fórmula que tienen espectros)
+
+### Búsqueda de isómeros por fórmula molecular
+- La fórmula se normaliza al orden de Hill (`HC7OH16` → `C7H17O`; `OC8H8O` → `C8H8O2`) y debe contener C.
+- Fuentes y cruce:
+  1. **PubChem** `fastformula`: todos los compuestos registrados con esa fórmula (CID, nombre, InChIKey).
+  2. **MassBank**: espectros EI con esa fórmula; cada registro trae su InChIKey.
+  3. **NIST WebBook**: especies con espectro IR (`Formula=…&cIR=on`), con su número CAS.
+  4. PubChem (sinónimos) da el CAS de cada CID para unir NIST con MassBank/PubChem por InChIKey.
+  5. **PubChem PUG-View** indica si hay RMN ¹H/¹³C: «✓» = lista de desplazamientos interpretable (HMDB,
+     NMRShiftDB), «imagen» = solo figura en el sitio de origen (SpectraBase).
+- Respuesta: `formula, total_pubchem, con_espectros, compuestos[{nombre, nombre_iupac, cid, cas, inchikey,
+  ms{n, accesiones}, ir{nist_id, url}, rmn{"1H","13C": "datos"|"imagen"|false}, tecnicas, consulta, url_pubchem}], avisos`.
+- Las consultas a PubChem se hacen en lotes con pausa para respetar su límite (≤ 5 peticiones/s); se verifican
+  hasta 40 compuestos para RMN y hasta 80 espectros de MassBank. Todo queda en caché 30 días.
+- En la interfaz, «Ver espectros» abre el compuesto con sus espectros e interpretación.
+- Limitación: solo aparecen compuestos con EM en MassBank o IR en NIST; un isómero que solo tenga RMN en
+  PubChem no se lista (verificarlo exigiría consultar uno por uno todos los isómeros registrados).
+
 ### Búsqueda por estructura (JSME)
 - El panel «Buscar por estructura» integra el editor JSME (Bienfait & Ertl, *J. Cheminform.* 2013, 5, 24;
   licencia BSD-3). Al dibujar, el SMILES se actualiza en el campo de texto; también puede pegarse un SMILES

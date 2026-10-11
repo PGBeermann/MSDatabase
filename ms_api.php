@@ -913,7 +913,233 @@ function urlNmrShiftDB(string $inchi, string $nucleo): string
     return NSDB_WEB . '/NmrshiftdbServlet/nmrshiftdbaction/exportcmlbyinchi/inchi/' . $seguro . '/spectrumtype/' . $nucleo;
 }
 
+// ================================================================== Búsqueda por fórmula molecular
+/**
+ * Normaliza una fórmula al orden de Hill (C, H y luego alfabético). Devuelve null si no es válida.
+ * Hill, E. A. J. Am. Chem. Soc. 1900, 22, 478–494.
+ */
+function formulaHill(string $f): ?string
+{
+    $f = preg_replace('/\s+/', '', $f);
+    if ($f === '' || strlen($f) > 40 || !preg_match('/^([A-Z][a-z]?\d*)+$/', $f)) {
+        return null;
+    }
+    preg_match_all('/([A-Z][a-z]?)(\d*)/', $f, $m, PREG_SET_ORDER);
+    $cuenta = [];
+    foreach ($m as [, $el, $n]) {
+        $cuenta[$el] = ($cuenta[$el] ?? 0) + ($n === '' ? 1 : (int) $n);
+    }
+    if (empty($cuenta['C'])) {
+        return null;   // solo compuestos orgánicos (con carbono)
+    }
+    $orden = ['C', 'H'];
+    $resto = array_diff(array_keys($cuenta), $orden);
+    sort($resto);
+    $out = '';
+    foreach (array_merge($orden, $resto) as $el) {
+        if (!empty($cuenta[$el])) {
+            $out .= $el . ($cuenta[$el] > 1 ? $cuenta[$el] : '');
+        }
+    }
+    return $out;
+}
+
+/** Descarga por lotes con pausa (PubChem admite ≤ 5 peticiones/s); lo que está en caché no espera. */
+function httpGetManyLotes(array $urls, int $lote = 4, int $pausaMs = 300): array
+{
+    $out = [];
+    $pend = [];
+    foreach (array_unique($urls) as $u) {
+        if (is_file(rutaCache($u)) && filemtime(rutaCache($u)) > time() - CACHE_TTL) {
+            $out += httpGetMany([$u]);
+        } else {
+            $pend[] = $u;
+        }
+    }
+    foreach (array_chunk($pend, $lote) as $k => $grupo) {
+        if ($k > 0) {
+            usleep($pausaMs * 1000);
+        }
+        $out += httpGetMany($grupo);
+    }
+    return $out;
+}
+
+/** Lista de especies con espectro IR en NIST WebBook para una fórmula: [ ['nombre','id','cas'] ]. */
+function nistPorFormula(string $f): array
+{
+    $url = NIST_WEB . '?Formula=' . rawurlencode($f) . '&NoIon=on&Units=SI&cIR=on';
+    [$code, $html] = httpGet($url);
+    if ($code !== 200 || $html === '') {
+        return [];
+    }
+    $out = [];
+    if (preg_match_all('/href="[^"]*cbook\.cgi\?ID=([A-Z]\d+)[^"]*"[^>]*>([^<]+)<\/a>/i', $html, $m, PREG_SET_ORDER)) {
+        foreach ($m as [, $id, $nombre]) {
+            $out[$id] = ['nombre' => html_entity_decode(trim($nombre), ENT_QUOTES | ENT_HTML5, 'UTF-8'), 'id' => $id,
+                'cas' => preg_match('/^C(\d+)(\d{2})(\d)$/', $id, $c) ? "$c[1]-$c[2]-$c[3]" : null];
+        }
+    } elseif (preg_match('/CAS Registry Number:<\/strong>\s*([\d-]+)/i', $html, $c) && preg_match('/<h1[^>]*>([^<]+)<\/h1>/i', $html, $h)) {
+        // una sola coincidencia: NIST redirige a la ficha de la especie
+        $id = 'C' . str_replace('-', '', $c[1]);
+        $out[$id] = ['nombre' => trim(html_entity_decode($h[1])), 'id' => $id, 'cas' => $c[1]];
+    }
+    return array_values($out);
+}
+
+function buscarPorFormula(string $entrada): array
+{
+    $f = formulaHill($entrada);
+    if ($f === null) {
+        responder(400, ['error' => 'Fórmula no válida. Ejemplos: C7H16O, C8H8O2, C6H5Cl (debe contener carbono).']);
+    }
+    $avisos = [];
+
+    // 1) PubChem: todos los compuestos registrados con esa fórmula (CID, nombre, InChIKey)
+    $pc = jsonDe(httpGet(PC_API . '/compound/fastformula/' . rawurlencode($f) . '/property/Title,IUPACName,InChIKey/JSON'));
+    $props = $pc['PropertyTable']['Properties'] ?? [];
+    $porKey = [];
+    foreach ($props as $p) {
+        if (!empty($p['InChIKey']) && !isset($porKey[$p['InChIKey']])) {
+            $porKey[$p['InChIKey']] = $p;
+        }
+    }
+    $totalPubChem = count($porKey);
+
+    // 2) MassBank: espectros EI con esa fórmula
+    $acc = accesionesDe(jsonDe(httpGet(urlBusquedaMassBank(['formula' => $f]))));
+    $recs = httpGetMany(array_map(fn($a) => MB_API . '/records/' . rawurlencode($a['accession']), array_slice($acc, 0, 80)));
+    $ms = [];   // inchikey → {nombre, accesiones}
+    foreach ($recs as $r) {
+        $rec = jsonDe($r);
+        if (!$rec) {
+            continue;
+        }
+        $key = null;
+        foreach ($rec['compound']['link'] ?? [] as $l) {
+            if (strtoupper($l['database'] ?? '') === 'INCHIKEY') {
+                $key = $l['identifier'];
+            }
+        }
+        $key = $key ?: ('MB:' . strtolower($rec['compound']['names'][0] ?? $rec['accession']));
+        $ms[$key]['nombre'] = $ms[$key]['nombre'] ?? ucfirst(strtolower($rec['compound']['names'][0] ?? ''));
+        $ms[$key]['accesiones'][] = $rec['accession'];
+    }
+    if (count($acc) > 80) {
+        $avisos[] = 'MassBank: se examinaron 80 de ' . count($acc) . ' espectros.';
+    }
+
+    // 3) NIST: especies con espectro IR
+    $nist = nistPorFormula($f);
+
+    // 4) CAS de los compuestos de PubChem (para cruzar con NIST), en una sola petición de sinónimos
+    $casACid = [];
+    $cids = array_slice(array_column(array_values($porKey), 'CID'), 0, 300);
+    if ($cids && $nist) {
+        $sin = jsonDe(httpGet(PC_API . '/compound/cid/' . implode(',', $cids) . '/synonyms/JSON'));
+        foreach ($sin['InformationList']['Information'] ?? [] as $inf) {
+            foreach ($inf['Synonym'] ?? [] as $s) {
+                if (casValido($s) && !isset($casACid[$s])) {
+                    $casACid[$s] = (int) $inf['CID'];
+                }
+            }
+        }
+    }
+    $cidAKey = [];
+    foreach ($porKey as $k => $p) {
+        $cidAKey[(int) $p['CID']] = $k;
+    }
+
+    // 5) Fusión por InChIKey (MassBank, PubChem) y CAS (NIST → PubChem)
+    $comp = [];
+    $nuevo = fn($k) => ['inchikey' => strpos($k, 'MB:') === 0 || strpos($k, 'NIST:') === 0 ? null : $k, 'nombre' => null,
+        'cid' => null, 'cas' => null, 'ms' => null, 'ir' => null, 'rmn' => null];
+    foreach ($ms as $k => $v) {
+        $comp[$k] = $comp[$k] ?? $nuevo($k);
+        $comp[$k]['ms'] = ['n' => count($v['accesiones']), 'accesiones' => $v['accesiones']];
+        $comp[$k]['nombre'] = $v['nombre'];
+    }
+    foreach ($nist as $n) {
+        $cid = $n['cas'] ? ($casACid[$n['cas']] ?? null) : null;
+        $k = $cid && isset($cidAKey[$cid]) ? $cidAKey[$cid] : 'NIST:' . $n['id'];
+        $comp[$k] = $comp[$k] ?? $nuevo($k);
+        $comp[$k]['ir'] = ['nist_id' => $n['id'], 'url' => NIST_WEB . '?ID=' . $n['id'] . '&Units=SI&Mask=80'];
+        $comp[$k]['cas'] = $n['cas'];
+        $comp[$k]['nombre_nist'] = $n['nombre'];
+    }
+    foreach ($comp as $k => &$c) {
+        if (isset($porKey[$k])) {
+            $c['cid'] = (int) $porKey[$k]['CID'];
+            $c['nombre'] = $porKey[$k]['Title'] ?? $c['nombre'];
+            $c['nombre_iupac'] = $porKey[$k]['IUPACName'] ?? null;
+        }
+        $c['nombre'] = $c['nombre'] ?: ($c['nombre_nist'] ?? '');
+    }
+    unset($c);
+
+    // 6) RMN (PubChem PUG-View) para los compuestos con CID — en lotes respetando el límite de PubChem
+    $conCid = array_filter($comp, fn($c) => $c['cid']);
+    $urls = [];
+    foreach ($conCid as $k => $c) {
+        $urls[$k] = PCV_API . '/data/compound/' . $c['cid'] . '/JSON?heading=' . rawurlencode('1D NMR Spectra');
+    }
+    $urls = array_slice($urls, 0, 40, true);
+    $resp = $urls ? httpGetManyLotes(array_values($urls)) : [];
+    foreach ($urls as $k => $u) {
+        $doc = jsonDe($resp[$u] ?? [0, '']);
+        // 'datos' = lista de desplazamientos utilizable; 'imagen' = solo figura (p. ej. SpectraBase); false = nada
+        $estado = function (string $titulo) use ($doc) {
+            $sec = $doc ? buscarSeccion($doc['Record']['Section'] ?? [], $titulo) : null;
+            if (!$sec) {
+                return false;
+            }
+            foreach ($sec['Information'] ?? [] as $it) {
+                if (stripos($it['Name'] ?? '', 'Shifts') === 0) {
+                    return 'datos';
+                }
+            }
+            return 'imagen';
+        };
+        $comp[$k]['rmn'] = ['1H' => $estado('1H NMR Spectra'), '13C' => $estado('13C NMR Spectra')];
+    }
+    if (count($conCid) > 40) {
+        $avisos[] = 'RMN: se verificaron 40 compuestos; para el resto, consulte el compuesto individualmente.';
+    }
+
+    $lista = array_values($comp);
+    foreach ($lista as &$c) {
+        $c['tecnicas'] = ($c['ms'] ? 1 : 0) + ($c['ir'] ? 1 : 0) + ((($c['rmn']['1H'] ?? false) === 'datos') ? 1 : 0) + ((($c['rmn']['13C'] ?? false) === 'datos') ? 1 : 0);
+        $c['consulta'] = $c['inchikey'] ?: ($c['cas'] ?: $c['nombre']);
+        $c['url_pubchem'] = $c['cid'] ? 'https://pubchem.ncbi.nlm.nih.gov/compound/' . $c['cid'] : null;
+        unset($c['nombre_nist']);
+    }
+    unset($c);
+    usort($lista, fn($a, $b) => [$b['tecnicas'], $a['nombre']] <=> [$a['tecnicas'], $b['nombre']]);
+
+    if (!$props) {
+        $avisos[] = 'PubChem no respondió o no tiene compuestos con esa fórmula; los nombres y el cruce de fuentes pueden estar incompletos.';
+    }
+    $avisos[] = 'RMN verificada en PubChem: «datos» = lista de desplazamientos interpretable (HMDB, NMRShiftDB); «imagen» = solo figura en el sitio de origen (SpectraBase). NMRShiftDB2 se consulta además al abrir cada compuesto.';
+    return [
+        'formula' => $f,
+        'total_pubchem' => $totalPubChem,
+        'con_espectros' => count($lista),
+        'compuestos' => $lista,
+        'avisos' => $avisos,
+        'fuentes' => 'PubChem (fastformula, sinónimos, PUG-View), MassBank Europe (EI), NIST Chemistry WebBook (IR)',
+        'fecha_consulta' => gmdate('c'),
+    ];
+}
+
 // ================================================================== Programa principal
+if (isset($_GET['formula'])) {
+    asegurarCache();
+    limitarFrecuencia();
+    $res = buscarPorFormula((string) $_GET['formula']);
+    responder($res['compuestos'] ? 200 : 404, $res['compuestos'] ? $res
+        : $res + ['error' => 'No se encontraron compuestos con espectros para la fórmula ' . $res['formula'] . '.']);
+}
+
 $smiles = trim((string) ($_GET['smiles'] ?? ''));
 if ($smiles !== '') {
     // Búsqueda por estructura (SMILES dibujado en JSME o pegado por el usuario).
